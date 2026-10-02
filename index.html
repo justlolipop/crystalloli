@@ -5,6 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Crystal Studio</title>
 <link rel="stylesheet" href="app.css">
+<style>
+.elbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
+.ellist{display:grid;gap:4px}
+.elrow{display:flex;align-items:center;gap:8px;border:1px solid rgba(128,128,128,.35);border-radius:6px;padding:4px 8px;cursor:pointer}
+.elrow.sel{outline:2px solid currentColor}
+.elrow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.elrow small{opacity:.65}
+.elrow .x{border:0;background:none;cursor:pointer;font-size:16px;color:inherit}
+.colsbox{margin-top:8px}
+.tplbar{display:flex;gap:6px;align-items:center;margin-bottom:8px}
+#tplSel{flex:1;min-width:0}
+</style>
 </head>
 <body>
 <div class="app">
@@ -35,7 +47,14 @@
       <select id="sheetSel" hidden aria-label="Sheet"></select>
       <label class="btn">Import Excel<input type="file" id="excelFile" accept=".xlsx,.xlsm,.xls,.csv"></label>
     </div>
-    <div class="chips" id="chips"></div>
+        <div class="elbar">
+      <button id="elAddText">＋ Add text</button>
+      <select id="elAddCol" aria-label="Add an Excel column"></select>
+    </div>
+    <div class="ellist" id="elList"></div>
+    <details class="colsbox"><summary>Excel columns (drag onto a text to link it)</summary>
+      <div class="chips" id="chips"></div>
+    </details>
     <p class="meta" id="meta"></p>
     <div class="rowsbar">
       <button id="prevRow" class="ib" aria-label="Previous row">‹</button>
@@ -125,6 +144,12 @@
       <label class="btn" title="Pick a .ai / .pdf / .svg from anywhere">Import file<input type="file" id="importFile" accept=".ai,.pdf,.svg" multiple></label>
     </div>
     <div class="sources" id="sources" role="tablist" aria-label="Template files"></div>
+        <div class="tplbar">
+      <button id="tplPrev" class="ib" aria-label="Previous design">‹</button>
+      <select id="tplSel" aria-label="Design in this file"></select>
+      <button id="tplNext" class="ib" aria-label="Next design">›</button>
+      <span class="hint" id="tplCount"></span>
+    </div>
     <div class="tpl-grid" id="tpls"></div>
   </section>
 </div>
