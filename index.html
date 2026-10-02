@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Crystal Studio</title>
+<link rel="stylesheet" href="app.css">
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div class="brand"><span class="mark" aria-hidden="true"></span>Crystal Studio</div>
+    <input id="designName" value="Untitled design" aria-label="Design name" spellcheck="false" autocomplete="off">
+    <span id="saveState" class="hint"></span>
+    <div class="spacer"></div>
+    <button id="newBtn">New</button>
+    <button id="openBtn">Open</button>
+    <button id="saveBtn" class="primary" title="Save (Ctrl+S)">Save</button>
+    <div class="menu">
+      <button aria-haspopup="true" aria-expanded="false">Download ▾</button>
+      <div class="menu-list right" role="menu">
+        <button data-export="png" role="menuitem">PNG for DTF printing<small>This design, 300 dpi, transparent background</small></button>
+        <button data-export="pdf" role="menuitem">PDF<small>This design, 300 dpi, real size</small></button>
+        <button data-export="pdf-all" role="menuitem">PDF of every row<small>One page per Excel row</small></button>
+        <button data-export="svg" role="menuitem">For Illustrator (.svg)<small>Opens in Illustrator with the text still editable</small></button>
+      </div>
+    </div>
+  </header>
+
+  <section class="panel" aria-labelledby="elH">
+    <div class="panel-head">
+      <h2 id="elH">Elements</h2>
+      <span class="hint" id="srcHint">Sample data (2 rows)</span>
+      <div class="spacer"></div>
+      <select id="sheetSel" hidden aria-label="Sheet"></select>
+      <label class="btn">Import Excel<input type="file" id="excelFile" accept=".xlsx,.xlsm,.xls,.csv"></label>
+    </div>
+    <div class="chips" id="chips"></div>
+    <p class="meta" id="meta"></p>
+    <div class="rowsbar">
+      <button id="prevRow" class="ib" aria-label="Previous row">‹</button>
+      <select id="rowSel" aria-label="Excel row"></select>
+      <button id="nextRow" class="ib" aria-label="Next row">›</button>
+      <span class="hint" id="rowCount"></span>
+      <div class="spacer"></div>
+      <button id="resetRow" title="Throw away your changes on this row">Reset</button>
+      <button id="applyAll" title="Copy positions, fonts and extra elements from this design to every row that uses the same template">Apply layout to all rows</button>
+    </div>
+    <p id="warn" class="warn" role="status"></p>
+  </section>
+
+  <section class="workspace" aria-label="Design">
+    <div class="toolbar" role="toolbar" aria-label="Design tools">
+     <div class="tb-row">
+      <div class="tg">
+        <button id="addText">＋ Text</button>
+        <div class="menu">
+          <button aria-haspopup="true" aria-expanded="false">＋ Shape ▾</button>
+          <div class="menu-list" role="menu">
+            <button data-shape="rect" role="menuitem">Rectangle</button>
+            <button data-shape="circle" role="menuitem">Circle</button>
+            <button data-shape="line" role="menuitem">Line</button>
+          </div>
+        </div>
+        <label class="btn">＋ Image<input type="file" id="addImage" accept="image/*"></label>
+      </div>
+      <div class="spacer"></div>
+      <div class="tg">
+        <button class="ib" id="undoBtn" title="Undo (Ctrl+Z)" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M5.5 3 2.5 6l3 3M2.5 6h7a4 4 0 0 1 0 8H7"/></svg></button>
+        <button class="ib" id="redoBtn" title="Redo (Ctrl+Y)" disabled><svg viewBox="0 0 16 16" aria-hidden="true"><path d="m10.5 3 3 3-3 3M13.5 6h-7a4 4 0 0 0 0 8H9"/></svg></button>
+      </div>
+      <div class="tg">
+        <button class="ib" id="zoomOut" aria-label="Zoom out">−</button>
+        <button id="zoomFit" title="Fit to screen">100%</button>
+        <button class="ib" id="zoomIn" aria-label="Zoom in">+</button>
+      </div>
+     </div>
+
+     <div class="tb-row ctx" id="ctxBar">
+      <span class="hint" id="ctxHint">Click anything on the design to change it — font, size, colour, position…</span>
+      <div class="tg" id="tgText" hidden>
+        <input id="fFont" class="font" list="fontList" aria-label="Font" placeholder="Font" spellcheck="false">
+        <input id="fSize" type="number" min="1" max="999" step="0.5" aria-label="Font size in pt" title="Size (pt)">
+        <input id="fColor" type="color" aria-label="Text colour" title="Text colour">
+        <button id="fBold" class="ib" aria-pressed="false" title="Bold"><b>B</b></button>
+        <button id="fItalic" class="ib" aria-pressed="false" title="Italic"><i>I</i></button>
+        <button id="fUnder" class="ib" aria-pressed="false" title="Underline"><u>U</u></button>
+        <button class="ib" data-align="left" aria-pressed="false" title="Align left"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M2 6.5h8M2 10h12M2 13.5h8"/></svg></button>
+        <button class="ib" data-align="center" aria-pressed="false" title="Align centre"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M4 6.5h8M2 10h12M4 13.5h8"/></svg></button>
+        <button class="ib" data-align="right" aria-pressed="false" title="Align right"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3h12M6 6.5h8M2 10h12M6 13.5h8"/></svg></button>
+        <label class="mini" title="Letter spacing (1/1000 em, same as Illustrator tracking)">Spacing<input id="fSpacing" type="number" step="10"></label>
+        <label class="mini" title="Leading in pt (distance between lines)">Leading<input id="fLeading" type="number" step="0.5" min="0.5"></label>
+        <label class="mini" title="Outline colour and width (pt)">Outline<input id="fStroke" type="color" aria-label="Outline colour"><input id="fStrokeW" type="number" min="0" step="0.1" aria-label="Outline width"></label>
+        <label class="mini" title="Which Excel column fills this text">Column<select id="fField"></select></label>
+      </div>
+
+      <div class="tg" id="tgShape" hidden>
+        <label class="mini">Fill<input id="sFill" type="color"></label>
+        <label class="mini">Border<input id="sStroke" type="color" aria-label="Border colour"><input id="sStrokeW" type="number" min="0" step="0.5" aria-label="Border width"></label>
+      </div>
+
+      <div class="tg" id="tgObj" hidden>
+        <label class="mini" title="Transparency">Opacity<input id="oOpacity" type="range" min="0.05" max="1" step="0.05"></label>
+        <button class="ib" id="oFwd" title="Bring forward"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 13V3M4 7l4-4 4 4"/></svg></button>
+        <button class="ib" id="oBack" title="Send backward"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M4 9l4 4 4-4"/></svg></button>
+        <button class="ib" id="oDup" title="Duplicate (Ctrl+D)"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="5" y="5" width="8.5" height="8.5" rx="1.5"/><path d="M10.5 2.5h-7a1 1 0 0 0-1 1v7"/></svg></button>
+        <button class="ib" id="oLock" aria-pressed="false" title="Lock / unlock"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="3" y="7" width="10" height="7" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg></button>
+        <button class="ib danger" id="oDel" title="Delete (Del)"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M3 4.5h10M6.5 4.5V3h3v1.5M4.5 4.5l.7 9h5.6l.7-9"/></svg></button>
+      </div>
+     </div>
+    </div>
+
+    <div id="stageWrap">
+      <div id="stageEmpty" class="stage-empty"></div>
+      <canvas id="c" width="600" height="400"></canvas>
+    </div>
+    <p class="hint tips">Double-click text to edit · drag a chip onto a text to fill it from the Excel · arrows nudge (Shift = 10) · Ctrl+Z undo · Ctrl+D duplicate · Del delete · Ctrl+scroll zoom</p>
+  </section>
+
+  <section class="panel" aria-labelledby="tpH">
+    <div class="panel-head">
+      <h2 id="tpH">Crystal templates</h2>
+      <div class="spacer"></div>
+      <button id="folderBtn" class="primary" title="Your DESIGN TEMPLATE folder: import any .ai in one click">Template folder</button>
+      <label class="btn" title="Pick a .ai / .pdf / .svg from anywhere">Import file<input type="file" id="importFile" accept=".ai,.pdf,.svg" multiple></label>
+    </div>
+    <div class="sources" id="sources" role="tablist" aria-label="Template files"></div>
+    <div class="tpl-grid" id="tpls"></div>
+  </section>
+</div>
+
+<datalist id="fontList"></datalist>
+
+<dialog id="openDlg" aria-labelledby="openH">
+  <h3 id="openH">Saved designs</h3>
+  <div id="openList" class="openlist"></div>
+  <div class="dlg-actions"><button id="openClose">Close</button></div>
+</dialog>
+
+<dialog id="folderDlg" aria-labelledby="folderH">
+  <h3 id="folderH">Template folder</h3>
+  <p class="hint">Each .ai is read without Illustrator. A sheet with several designs (Design A, B, C…) becomes one template per design. Live text becomes editable; text converted to outlines stays part of the picture. Your files aren't changed.</p>
+  <div class="frow-path">
+    <input id="folderPath" class="path" placeholder="\\TEQGO\Artwork\…\DESIGN TEMPLATE" spellcheck="false" aria-label="Folder path">
+    <button id="folderSet">Use folder</button>
+  </div>
+  <input id="folderSearch" class="path" type="search" placeholder="Search, e.g. 10030 or DTF" aria-label="Search files">
+  <div id="folderList" class="folderlist"></div>
+  <div class="dlg-actions"><button id="folderClose">Close</button></div>
+</dialog>
+
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
