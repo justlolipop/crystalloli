@@ -119,6 +119,16 @@ header.top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .sidepanel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mute); margin: 0 0 8px; }
 .sidepanel .elbar { margin-top: 0; }
 .sidepanel .chips .chip { max-width: 100%; }
+/* big previous / next row buttons on each side of the design */
+.stagebox { position: relative; min-width: 0; }
+.stagenav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 46px; height: 46px; padding: 0;
+  border-radius: 50%; font-size: 26px; line-height: 1; background: var(--panel); border: 1px solid var(--line);
+  box-shadow: var(--shadow); display: grid; place-items: center;
+}
+.stagenav.prev { left: 10px; }
+.stagenav.next { right: 10px; }
+.stagenav:disabled { opacity: 0.35; }
 @media (max-width: 900px) {
   .stagerow { grid-template-columns: minmax(0, 1fr); }
   .sidepanel { height: auto; max-height: 50vh; }

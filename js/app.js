@@ -202,11 +202,14 @@ function renderTable() {
   if (sel) sel.scrollIntoView({ block: "nearest" });
   const n = S.groups.length;
   $("rowCount").textContent = `Row ${cur + 1} of ${n}`;
-  $("prevRow").disabled = cur <= 0;
-  $("nextRow").disabled = cur >= n - 1;
+  $("prevRow").disabled = $("stagePrev").disabled = cur <= 0;
+  $("nextRow").disabled = $("stageNext").disabled = cur >= n - 1;
   $("resetRow").disabled = !S.edits[S.row + "|" + S.key];
 }
 const renderTableSoon = debounce(renderTable, 200);
+
+$("stagePrev").onclick = () => $("prevRow").click();
+$("stageNext").onclick = () => $("nextRow").click();
 
 $("xlTable").addEventListener("click", (e) => {
   const tr = e.target.closest("tr[data-g]");
