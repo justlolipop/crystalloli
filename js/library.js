@@ -13,7 +13,7 @@ import { loose } from "./util.js";
 import { useFont, findFont } from "./fonts.js";
 import { fitSize } from "./measure.js";
 import { store } from "./store.js";
-import { visibleTextItems, readableText, withoutLiveText } from "./pdftext.js";
+import { visibleTextItems, readableText, withoutLiveText } from "./pdf.js";
 
 const PDF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/g;

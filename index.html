@@ -62,12 +62,22 @@
       <select id="sheetSel" hidden aria-label="Sheet"></select>
       <label class="btn">Import Excel<input type="file" id="excelFile" accept=".xlsx,.xlsm,.xls,.csv"></label>
     </div>
-        <div class="elbar">
-      <button id="elAddText">＋ Add text</button>
-      <select id="elAddCol" aria-label="Add an Excel column"></select>
+    <div class="xltable" id="xlTable" role="grid" aria-label="Excel rows — click one to open its crystal"></div>
+    <div class="rowsbar">
+      <button id="prevRow" class="ib" aria-label="Previous crystal" title="Previous different crystal">‹</button>
+      <button id="nextRow" class="ib" aria-label="Next crystal" title="Next different crystal">›</button>
+      <span class="hint" id="rowCount"></span>
+      <div class="spacer"></div>
+      <button id="resetRow" title="Throw away your changes on this crystal">Reset</button>
+      <button id="applyAll" title="Copy positions, fonts and extra elements from this crystal to every crystal that uses the same design">Apply layout to all</button>
     </div>
-    <div class="ellist" id="elList"></div>
-    <details class="colsbox" id="colsBox"><summary>Excel columns (drag onto a text to link it)</summary>
+    <details class="colsbox" id="colsBox"><summary>Texts on this design</summary>
+      <div class="elbar">
+        <button id="elAddText">＋ Add text</button>
+        <select id="elAddCol" aria-label="Add an Excel column"></select>
+      </div>
+      <div class="ellist" id="elList"></div>
+      <p class="hint" style="margin:8px 0 4px">Excel columns (drag onto a text to link it)</p>
       <div class="chips" id="chips"></div>
     </details>
     <p class="meta" id="meta"></p>
