@@ -14,8 +14,9 @@
 .elrow small{opacity:.65}
 .elrow .x{border:0;background:none;cursor:pointer;font-size:16px;color:inherit}
 .colsbox{margin-top:8px}
-.tplbar{display:flex;gap:6px;align-items:center;margin-bottom:8px}
-#tplSel{flex:1;min-width:0}
+.tplnow{margin:0 0 8px}
+.sources .src{cursor:default}
+.sources .src .x{border:0;background:none;cursor:pointer;color:inherit;font-size:14px;padding:0 0 0 4px}
 
 /* the Excel, columns A–F; one line per different crystal */
 .xltable{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin:0 0 4px}
@@ -159,14 +160,8 @@
       <button id="folderBtn" class="primary" title="Your DESIGN TEMPLATE folder: import any .ai in one click">Template folder</button>
       <label class="btn" title="Pick a .ai / .pdf / .svg from anywhere">Import file<input type="file" id="importFile" accept=".ai,.pdf,.svg" multiple></label>
     </div>
-    <div class="sources" id="sources" role="tablist" aria-label="Template files"></div>
-        <div class="tplbar">
-      <button id="tplPrev" class="ib" aria-label="Previous design">‹</button>
-      <select id="tplSel" aria-label="Design in this file"></select>
-      <button id="tplNext" class="ib" aria-label="Next design">›</button>
-      <span class="hint" id="tplCount"></span>
-    </div>
-    <div class="tpl-grid" id="tpls"></div>
+    <p class="tplnow" id="tplNow"></p>
+    <div class="sources" id="sources" aria-label="Imported template files"></div>
   </section>
 </div>
 

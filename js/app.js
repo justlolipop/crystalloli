@@ -116,17 +116,10 @@ function sources() {
   }
   return [...groups].map(([file, items]) => ({ file, label: file.replace(/\.(ai|pdf|svg)$/i, ""), items: items.sort((a, b) => (a.order || 0) - (b.order || 0)) }));
 }
-const currentSource = () => sources().find((s) => s.file === S.source) || null;
 
 function keyFor(r) {
   r = canon(r);
-  const valid = (k) => !!itemOf(k);
-  if (valid(S.rowTpl[r])) return S.rowTpl[r];   // picked by hand for this crystal
-  const auto = autoKey(r);                         // from column F (jenis_plak)
-  if (auto !== undefined) return auto;
-  if (valid(S.lastKey)) return S.lastKey;
-  const src = currentSource() || sources()[0];
-  return src && src.items[0] ? "lib|" + src.items[0].id : null;
+  return autoKey(r) || null;  // the crystal comes only from column F (jenis_plak)
 }
 
 function sceneFor(key, r) {
@@ -147,11 +140,11 @@ async function show(r, key) {
   renderTable();
   if (!it) {
     const want = jenisLabel(S.row);
-    editor.showEmpty(want && autoKey(S.row) === null
-      ? `This row needs <b>${esc(want)}</b>, which isn't imported yet.<br>Press <b>Template folder</b> below to import it, or pick another design below to use for this crystal.`
-      : S.library.length
-        ? "Pick a design below to start."
-        : "No crystal templates yet.<br>Press <b>Template folder</b> below to import from your DESIGN TEMPLATE folder, or <b>Import file</b>.");
+    editor.showEmpty(!want
+      ? "This row has no <b>jenis_plak</b>, so no crystal is picked.<br>Fill column F in the Excel, e.g. <b>CRYSTAL / AK7 / DESIGN C</b>."
+      : autoKey(S.row) === null
+        ? `This row needs <b>${esc(want)}</b>, which isn't imported yet.<br>Press <b>Template folder</b> below to import it.`
+        : `Couldn't read <b>${esc(want)}</b>. Write it like <b>CRYSTAL / AK7 / DESIGN C</b>.`);
     renderAll();
     return;
   }
@@ -288,86 +281,34 @@ $("elList").addEventListener("click", (e) => {
 // ------------------------------------------------------------------ Templates panel
 
 function renderSources() {
-  $("sources").innerHTML = sources().map((s) => `<button class="src" role="tab" aria-selected="${s.file === S.source}" data-src="${esc(s.file)}" title="${esc(s.file)}">` +
-    `${esc(s.label)} <span class="tag">${s.items.length}</span></button>`).join("")
+  $("sources").innerHTML = sources().map((s) => `<span class="src" title="${esc(s.file)}">` +
+    `${esc(s.label)} <span class="tag">${s.items.length}</span>` +
+    `<button class="x" data-delfile="${esc(s.file)}" aria-label="Delete ${esc(s.label)}" title="Remove this file's designs from the studio">×</button></span>`).join("")
     || `<p class="hint">No templates yet. Press <b>Template folder</b> to import from your DESIGN TEMPLATE folder.</p>`;
 }
 
-let tplToken = 0;
-const thumbCache = new Map();
-async function renderTemplates() {
-  const token = ++tplToken;
-  const src = currentSource();
-  if (!src) { $("tpls").innerHTML = ""; $("tplSel").innerHTML = ""; $("tplCount").textContent = ""; return; }
-  const short = (n) => n.replace(src.label + " — ", "");
-  const idx = Math.max(0, src.items.findIndex((x) => "lib|" + x.id === S.key));
-  const it = src.items[idx], key = "lib|" + it.id;
-  $("tplSel").innerHTML = src.items.map((x, i) => `<option value="lib|${esc(x.id)}">${i + 1}. ${esc(short(x.name))}</option>`).join("");
-  $("tplSel").value = key;
-  $("tplCount").textContent = `${idx + 1} of ${src.items.length}`;
-  $("tplPrev").disabled = idx <= 0;
-  $("tplNext").disabled = idx >= src.items.length - 1;
-  const sub = it.source === "svg" ? "SVG · every element editable" : it.texts.length ? `${it.texts.length} editable text${it.texts.length === 1 ? "" : "s"}` : "picture only (no live text)";
-  $("tpls").innerHTML = `<div class="tcard-wrap"><button class="tcard" aria-pressed="${key === S.key}" data-key="${esc(key)}">
-    <span class="thumb"><img alt="" data-thumb="${esc(key)}"></span><span class="tname">${esc(short(it.name))}</span><span class="tsub">${esc(sub)}</span>
-    </button><button class="tdel" data-del="${esc(it.id)}" aria-label="Delete ${esc(it.name)}" title="Delete this template">×</button></div>`;
-  const sig = key + "|" + JSON.stringify(row());
-  let url = thumbCache.get(sig);
-  if (!url) {
-    try {
-      const sc = await sceneFor(key, S.row);
-      if (!sc) return;
-      url = (await editor.renderOffscreen({ scene: sc }, (72 * 320) / Math.max(sc.width, sc.height * 1.4))).url;
-      thumbCache.set(sig, url);
-    } catch (e) { return; }
-  }
-  if (token !== tplToken) return;
-  const img = $("tpls").querySelector("img[data-thumb]");
-  if (img) img.src = url;
+// which crystal this row uses — read-only, it comes from the Excel's jenis_plak
+function renderTemplates() {
+  const it = itemOf(S.key);
+  $("tplNow").innerHTML = it
+    ? `This crystal uses <b>${esc(it.name)}</b> <span class="hint">(from jenis_plak)</span>`
+    : `<span class="hint">The crystal for each row is picked from its <b>jenis_plak</b> in the Excel.</span>`;
 }
 
-async function chooseTemplate(key) {
-  S.rowTpl[S.row] = key;
-  S.lastKey = key;
-  markDirty();
-  await show(S.row, key);
-}
 $("sources").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-src]");
-  const src = b && sources().find((s) => s.file === b.dataset.src);
-  if (src && src.items[0]) chooseTemplate("lib|" + src.items[0].id);
-});
-const stepTpl = (d) => {
-  const src = currentSource();
-  const i = src ? src.items.findIndex((x) => "lib|" + x.id === S.key) : -1;
-  if (src && src.items[i + d]) chooseTemplate("lib|" + src.items[i + d].id);
-};
-$("tplSel").onchange = () => chooseTemplate($("tplSel").value);
-$("tplPrev").onclick = () => stepTpl(-1);
-$("tplNext").onclick = () => stepTpl(1);
-
-$("tpls").addEventListener("click", async (e) => {
-  const del = e.target.closest("[data-del]");
-  if (del) return deleteTemplate(del.dataset.del);
-  const card = e.target.closest("[data-key]");
-  if (!card) return;
-  S.rowTpl[S.row] = card.dataset.key;
-  S.lastKey = card.dataset.key;
-  markDirty();
-  await show(S.row, card.dataset.key);
+  const b = e.target.closest("[data-delfile]");
+  if (b) deleteFile(b.dataset.delfile);
 });
 
-async function deleteTemplate(id) {
-  const it = S.library.find((x) => x.id === id);
-  if (!it || !confirm(`Delete the template “${it.name}”? (Your .ai file isn't touched.)`)) return;
-  try { await store.deleteLibrary(id); } catch (err) { return toast(err.message, "bad"); }
-  S.library = S.library.filter((x) => x.id !== id);
-  const key = "lib|" + id;
-  for (const r of Object.keys(S.rowTpl)) if (S.rowTpl[r] === key) delete S.rowTpl[r];
-  for (const k of Object.keys(S.edits)) if (k.endsWith("|" + key)) delete S.edits[k];
-  if (S.lastKey === key) S.lastKey = null;
-  if (!currentSource()) S.source = sources()[0] ? sources()[0].file : null;
-  await show(S.row, S.key === key ? null : S.key);
+async function deleteFile(file) {
+  const items = S.library.filter((x) => x.file === file);
+  if (!items.length || !confirm(`Remove “${file}” (${items.length} design${items.length === 1 ? "" : "s"}) from the studio? Your .ai file isn't touched.`)) return;
+  for (const it of items) {
+    try { await store.deleteLibrary(it.id); } catch (err) { return toast(err.message, "bad"); }
+    S.library = S.library.filter((x) => x.id !== it.id);
+    for (const k of Object.keys(S.edits)) if (k.endsWith("|lib|" + it.id)) delete S.edits[k];
+  }
+  await show(S.row);
 }
 
 // a pdf text linked to a column by hand: remember it in the template, for every row
@@ -376,7 +317,6 @@ function onBound(o, field) {
   const it = itemOf(S.key);
   if (!it || it.source !== "pdf" || !o.data || typeof o.data.src !== "number" || !it.texts[o.data.src]) return;
   it.texts[o.data.src].field = field;
-  thumbCache.clear();
   saveLibrarySoon(it);
 }
 
@@ -397,19 +337,7 @@ async function importFiles(files) {
     }
   }
   if (first) {
-    thumbCache.clear();
-    if (autoKey(S.row) === undefined) {
-      // this row doesn't say which crystal: use what was just imported
-      const key = "lib|" + first.id;
-      S.rowTpl[S.row] = key;
-      S.lastKey = key;
-      S.source = first.file;
-      markDirty();
-      await show(S.row, key);
-    } else {
-      // column F picks the crystal: the new file may be the one this row (or others) needed
-      await show(S.row);
-    }
+    await show(S.row);  // column F picks the crystal: the new file may be the one this row needed
   }
   if (bad.length) toast(bad.join("  ·  "), "bad");
   return !bad.length;
@@ -538,12 +466,11 @@ async function loadSheet(name) {
   buildGroups();
   S.rowTpl = {};
   S.edits = {};
-  thumbCache.clear();
   $("srcHint").textContent = `${S.sourceName} · ${name} · ${rows.length} row${rows.length === 1 ? "" : "s"}`;
   markDirty();
   await show(0);
   $("colsBox").open = true;
-  toast(`Loaded ${rows.length} row${rows.length === 1 ? "" : "s"} and ${columns.length} column${columns.length === 1 ? "" : "s"} from ${S.sourceName}.${S.key ? "" : " Pick a design below to see them."}`);
+  toast(`Loaded ${rows.length} row${rows.length === 1 ? "" : "s"} and ${columns.length} column${columns.length === 1 ? "" : "s"} from ${S.sourceName}.`);
 }
 
 // ------------------------------------------------------------------ editor hooks
@@ -689,7 +616,6 @@ async function openDesign(id) {
   $("sheetSel").hidden = true;
   $("srcHint").textContent = S.sourceName ? `${S.sourceName}${S.sheet ? " · " + S.sheet : ""} · ${S.rows.length} rows` : `${S.rows.length} rows`;
   $("saveState").textContent = "Opened";
-  thumbCache.clear();
   $("openDlg").close();
   await show(S.row);
 }
@@ -731,7 +657,6 @@ $("newBtn").onclick = async () => {
   $("sheetSel").hidden = true;
   $("srcHint").textContent = "Sample data (2 rows)";
   $("saveState").textContent = "";
-  thumbCache.clear();
   await show(0);
 };
 $("designName").addEventListener("change", () => { S.design.name = $("designName").value.trim() || "Untitled design"; markDirty(); });
