@@ -537,6 +537,8 @@ async function loadSheet(name) {
   $("srcHint").textContent = `${S.sourceName} · ${name} · ${rows.length} row${rows.length === 1 ? "" : "s"}`;
   markDirty();
   await show(0);
+  $("colsBox").open = true;
+  toast(`Loaded ${rows.length} row${rows.length === 1 ? "" : "s"} and ${columns.length} column${columns.length === 1 ? "" : "s"} from ${S.sourceName}.${S.key ? "" : " Pick a design below to see them."}`);
 }
 
 // ------------------------------------------------------------------ editor hooks
