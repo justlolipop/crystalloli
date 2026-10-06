@@ -74,9 +74,10 @@ function parseJenis(v) {
 }
 
 function findSource(code) {
-  // "R-7", "R7" and "R 7" all match a file called "CRYSTAL R-7"
-  const pat = code.replace(/[^A-Z0-9]+/g, "").split("").join("[^A-Z0-9]*");
+  // "R-7", "R7" and "R 7" all match a file called "CRYSTAL R-7"; "011A" also matches "0011A"
+  let pat = code.replace(/[^A-Z0-9]+/g, "").split("").join("[^A-Z0-9]*");
   if (!pat) return null;
+  if (/^\d/.test(pat)) pat = "0*" + pat;
   const re = new RegExp("(^|[^A-Z0-9])" + pat + "(?![A-Z0-9])");
   return sources().filter((s) => re.test(s.file.toUpperCase().replace(/\.(AI|PDF|SVG)$/, "")))
     .sort((a, b) => a.file.length - b.file.length)[0] || null;
