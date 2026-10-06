@@ -122,13 +122,22 @@ header.top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 /* big previous / next row buttons on each side of the design */
 .stagebox { position: relative; min-width: 0; }
 .stagenav {
-  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2; width: 46px; height: 46px; padding: 0;
-  border-radius: 50%; font-size: 26px; line-height: 1; background: var(--panel); border: 1px solid var(--line);
-  box-shadow: var(--shadow); display: grid; place-items: center;
+  position: absolute; top: 50%; z-index: 2; width: 52px; height: 52px; padding: 0; border-radius: 50%;
+  background: var(--panel); color: var(--ink); border: 1px solid var(--line); box-shadow: var(--shadow);
+  display: grid; place-items: center; cursor: pointer; transform: translateY(-50%);
+  transition: transform 0.15s ease, background 0.15s ease, color 0.15s ease, opacity 0.15s ease;
 }
-.stagenav.prev { left: 10px; }
-.stagenav.next { right: 10px; }
-.stagenav:disabled { opacity: 0.35; }
+.stagenav svg { width: 26px; height: 26px; fill: none; stroke: currentColor; stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.stagenav.prev { left: 20px; }
+.stagenav.next { right: 20px; }
+.stagenav:hover:not(:disabled) { background: var(--acc); border-color: transparent; color: var(--accfg); transform: translateY(-50%) scale(1.08); }
+.stagenav:focus-visible { outline: 3px solid var(--acc); outline-offset: 2px; }
+.stagenav:disabled { opacity: 0; pointer-events: none; }
+@media (max-width: 900px) {
+  .stagenav { width: 42px; height: 42px; }
+  .stagenav.prev { left: 10px; }
+  .stagenav.next { right: 10px; }
+}
 @media (max-width: 900px) {
   .stagerow { grid-template-columns: minmax(0, 1fr); }
   .sidepanel { height: auto; max-height: 50vh; }
