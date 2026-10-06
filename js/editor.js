@@ -314,6 +314,21 @@ async function offscreen(entry) {
   return { sc, w, h };
 }
 
+// every text of a row's design as plain data (box in pt from the design's top-left), for
+// putting the same words into the original .ai in Illustrator
+export async function textsOf(entry) {
+  const { sc } = await offscreen(entry);
+  const out = sc.getObjects().filter(isText).filter((o) => o.visible !== false).map((o) => {
+    const b = o.getBoundingRect(true, true), d = o.data || {};
+    return {
+      src: d.src ?? null, text: String(o.text ?? ""), l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height,
+      size: (o.fontSize || 12) * (o.scaleY || 1), fill: typeof o.fill === "string" ? o.fill : null, align: o.textAlign || "left", ps: d.ps || null,
+    };
+  });
+  sc.dispose();
+  return out;
+}
+
 // this design, straight from the canvas (no selection boxes or guides)
 export function exportImage(dpi = 300, format = "png") {
   cv.discardActiveObject();

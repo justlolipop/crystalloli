@@ -7,6 +7,7 @@ import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl }
 import { setFontList, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground } from "./library.js";
+import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
 
@@ -571,12 +572,47 @@ async function exportPdf(all) {
   toast("PDF ready.");
 }
 
+// What the Illustrator script needs for each row: which design of which .ai, and the texts that
+// differ from the template (changed words, size, colour or place; deleted; added).
+async function illustratorJob(all) {
+  const rows = [];
+  const near = (a, b) => Math.abs(a - b) < 0.5;
+  for (const r of all ? S.rows.map((_, i) => i) : [S.row]) {
+    const key = r === S.row ? S.key : keyFor(r), it = itemOf(key);
+    if (!it || it.source !== "pdf") continue;
+    const st = r === S.row && key === S.key ? editor.currentState() : S.edits[r + "|" + key];
+    const now = await editor.textsOf(st ? { state: st, images: [] } : { scene: { ...(await sceneFor(key, r)), images: [] } });
+    const orig = await editor.textsOf({ scene: { ...(await libraryScene(it, {}, S.columns)), images: [] } });
+    const texts = [];
+    for (const n of now) {
+      const o = n.src == null ? null : orig.find((x) => x.src === n.src);
+      if (!o) { texts.push({ now: n }); continue; }
+      const same = o.text === n.text && near(o.l, n.l) && near(o.t, n.t) && near(o.size, n.size) && o.fill === n.fill;
+      if (!same) texts.push({ orig: o, now: n });
+    }
+    for (const o of orig) if (!now.some((n) => n.src === o.src)) texts.push({ orig: o, deleted: true });
+    rows.push({ row: r + 1, file: it.file, page: it.page || 1, region: it.region || [0, 0, it.width, it.height], name: it.name, texts });
+  }
+  let folder = "";
+  try { folder = (await store.folder()).folder || ""; } catch (e) {}
+  return { folder, rows };
+}
+
 async function doExport(kind) {
   editor.closeMenus();
   if (!S.key) return toast("Nothing to download yet — pick a design first.", "bad");
   try {
     if (kind === "pdf" || kind === "pdf-all") return await exportPdf(kind === "pdf-all");
     const name = safeName(S.design.name) + (S.rows.length > 1 ? ` - row ${S.row + 1}` : "");
+    if (kind === "ai" || kind === "ai-all") {
+      toast("Making the Illustrator script…");
+      const job = await illustratorJob(kind === "ai-all");
+      if (!job.rows.length) return toast("These rows' designs aren't from an .ai / .pdf file, so there's nothing to open in Illustrator.", "bad");
+      const file = safeName(S.design.name) + (kind === "ai-all" ? " - every row" : ` - row ${S.row + 1}`) + ".jsx";
+      downloadBlob(new Blob([illustratorScript(job)], { type: "text/plain" }), file);
+      toast("In Illustrator: File › Scripts › Other Script… and pick the .jsx — it makes one vector .ai per row.");
+      return;
+    }
     if (kind === "png") {
       toast("Making a 300 dpi PNG…");
       const out = await renderPrint(S.key, S.row, "png");
