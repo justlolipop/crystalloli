@@ -217,7 +217,7 @@ function renderWarn() {
   if (it && it.source === "pdf" && !it.texts.length) {
     msgs.push("This design has no live text — its words are part of the picture (converted to outlines in Illustrator). Keep the text live in the .ai to make it editable, or add new text on top.");
   } else if (it && it.texts.length && !editor.objects().some((o) => o.data && o.data.field)) {
-    msgs.push("Tip: open “Texts on this design” and drag an Excel column onto a text to fill it from the Excel — it stays linked for every row.");
+    msgs.push("Tip: drag an Excel column (left of the design) onto a text to fill it from the Excel — it stays linked for every row.");
   }
   const mf = [...new Set(editor.objects().filter((o) => editor.isText(o) && o.data && o.data.ps && fallbackFor(o.data.ps)).map((o) => describeFont(o.data.ps)))];
   if (mf.length) msgs.push(`Not installed on this PC (showing a stand-in): ${mf.slice(0, 4).join(", ")}${mf.length > 4 ? "…" : ""}`);

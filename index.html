@@ -7,7 +7,7 @@
 <link rel="stylesheet" href="app.css">
 <style>
 .elbar{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0}
-.ellist{display:grid;gap:4px}
+.ellist{display:grid;gap:4px;grid-template-columns:minmax(0,1fr)}
 .elrow{display:flex;align-items:center;gap:8px;border:1px solid rgba(128,128,128,.35);border-radius:6px;padding:4px 8px;cursor:pointer}
 .elrow.sel{outline:2px solid currentColor}
 .elrow .t{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -72,15 +72,6 @@
       <button id="resetRow" title="Throw away your changes on this crystal">Reset</button>
       <button id="applyAll" title="Copy positions, fonts and extra elements from this row to every row that uses the same design">Apply layout to all</button>
     </div>
-    <details class="colsbox" id="colsBox"><summary>Texts on this design</summary>
-      <div class="elbar">
-        <button id="elAddText">＋ Add text</button>
-        <select id="elAddCol" aria-label="Add an Excel column"></select>
-      </div>
-      <div class="ellist" id="elList"></div>
-      <p class="hint" style="margin:8px 0 4px">Excel columns (drag onto a text to link it)</p>
-      <div class="chips" id="chips"></div>
-    </details>
     <p class="meta" id="meta"></p>
     <p id="warn" class="warn" role="status"></p>
   </section>
@@ -146,9 +137,21 @@
      </div>
     </div>
 
-    <div id="stageWrap">
-      <div id="stageEmpty" class="stage-empty"></div>
-      <canvas id="c" width="600" height="400"></canvas>
+    <div class="stagerow">
+      <aside class="sidepanel" id="colsBox" aria-labelledby="txH">
+        <h2 id="txH">Texts on this design</h2>
+        <div class="elbar">
+          <button id="elAddText">＋ Add text</button>
+          <select id="elAddCol" aria-label="Add an Excel column"></select>
+        </div>
+        <div class="ellist" id="elList"></div>
+        <p class="hint" style="margin:10px 0 4px">Excel columns (drag onto a text to link it)</p>
+        <div class="chips" id="chips"></div>
+      </aside>
+      <div id="stageWrap">
+        <div id="stageEmpty" class="stage-empty"></div>
+        <canvas id="c" width="600" height="400"></canvas>
+      </div>
     </div>
     <p class="hint tips">Double-click text to edit · drag a chip onto a text to fill it from the Excel · arrows nudge (Shift = 10) · Ctrl+Z undo · Ctrl+D duplicate · Del delete · Ctrl+scroll zoom</p>
   </section>

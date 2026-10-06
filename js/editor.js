@@ -844,10 +844,14 @@ export function linkTextBackgrounds(canvas) {
     (o) => o.type === 'text' || o.type === 'i-text' || o.type === 'textbox'
   );
 
+  // only a template's own shadow copies: texts filled from the Excel can show the same words
+  // (two texts linked to one column) and must still move on their own
+  const own = (t) => !(t.data && t.data.field) && typeof (t.data && t.data.src) === "string" && t.data.src.startsWith("svg");
   for (let i = 0; i < texts.length; i++) {
     for (let j = i + 1; j < texts.length; j++) {
       const t1 = texts[i];
       const t2 = texts[j];
+      if (!own(t1) || !own(t2)) continue;
 
       // Match layers ONLY if they contain identical text content
       const str1 = (t1.text || '').trim();

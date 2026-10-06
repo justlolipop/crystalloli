@@ -110,6 +110,19 @@ header.top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 #stageWrap.is-empty .canvas-container { display: none; }
 #stageWrap.is-empty .stage-empty { display: block; }
 .tips { font-size: 12px; }
+/* the design's texts sit beside the design */
+.stagerow { display: grid; grid-template-columns: minmax(260px, 340px) minmax(0, 1fr); gap: 12px; min-width: 0; }
+.sidepanel {
+  background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 10px 12px; min-width: 0;
+  height: min(64vh, 720px); min-height: 320px; overflow: auto;
+}
+.sidepanel h2 { font-size: 12px; text-transform: uppercase; letter-spacing: 0.06em; color: var(--mute); margin: 0 0 8px; }
+.sidepanel .elbar { margin-top: 0; }
+.sidepanel .chips .chip { max-width: 100%; }
+@media (max-width: 900px) {
+  .stagerow { grid-template-columns: minmax(0, 1fr); }
+  .sidepanel { height: auto; max-height: 50vh; }
+}
 
 /* menus */
 .menu { position: relative; }
