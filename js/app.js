@@ -35,6 +35,72 @@ const row = () => S.rows[S.row] || {};
 const itemOf = (key) => (key ? S.library.find((x) => "lib|" + x.id === key) : null);
 const columnsForUi = () => S.columns.map((c) => ({ key: c.key, label: c.label }));
 
+// ------------------------------------------------------------------ the Excel table
+// Only columns A–F are shown; the rest (category, line_order, …) are still read and kept.
+// Rows whose A–F are all the same are one crystal: it's shown once (×N), edited once, and the
+// arrows jump straight to the next different crystal. Every row still gets its own page in
+// "PDF of every row".
+
+const SHOWN_COLUMNS = 6;
+const shownCols = () => S.columns.slice(0, SHOWN_COLUMNS);
+S.groups = [];   // [{ rows: [row indexes] }] in Excel order
+S.groupOf = [];  // row index -> group index
+
+function buildGroups() {
+  const bySig = new Map();
+  S.groups = [];
+  S.groupOf = [];
+  S.rows.forEach((rw, i) => {
+    const sig = shownCols().map((c) => String(rw[c.key] ?? "").replace(/\s+/g, " ").trim()).join("\u0001");
+    let g = bySig.get(sig);
+    if (!g) { g = { i: S.groups.length, rows: [] }; bySig.set(sig, g); S.groups.push(g); }
+    g.rows.push(i);
+    S.groupOf[i] = g.i;
+  });
+}
+// the row that stands for its whole group (its first row)
+const canon = (r) => { const g = S.groups[S.groupOf[r]]; return g ? g.rows[0] : r; };
+const groupRows = (r) => { const g = S.groups[S.groupOf[r]]; return g ? g.rows : [r]; };
+
+// ------------------------------------------------------------------ crystal from column F
+// "CRYSTAL / 80-B / DESIGN 2" -> the imported file with 80-B in its name, its 2nd design (B)
+
+function parseJenis(v) {
+  let s = String(v || "").toUpperCase().replace(/\s+/g, " ").trim();
+  if (!s) return null;
+  const dm = /\bDESIGN\s*([A-Z]|\d{1,2})\b/.exec(s);
+  s = s.replace(/\bDESIGN\s*([A-Z]|\d{1,2})\b/, " ").replace(/\b(DTF\s+)?CRYSTAL\b/g, " ").replace(/[\/|]+/g, " ").replace(/\s+/g, " ").trim();
+  return s ? { code: s, design: dm ? dm[1] : "" } : null;
+}
+
+function findSource(code) {
+  // "R-7", "R7" and "R 7" all match a file called "CRYSTAL R-7"
+  const pat = code.replace(/[^A-Z0-9]+/g, "").split("").join("[^A-Z0-9]*");
+  if (!pat) return null;
+  const re = new RegExp("(^|[^A-Z0-9])" + pat + "(?![A-Z0-9])");
+  return sources().filter((s) => re.test(s.file.toUpperCase().replace(/\.(AI|PDF|SVG)$/, "")))
+    .sort((a, b) => a.file.length - b.file.length)[0] || null;
+}
+
+function pickDesign(items, d) {
+  if (!items.length) return null;
+  if (!d) return items[0];
+  const n = /^\d+$/.test(d) ? +d : d.charCodeAt(0) - 64;
+  const letter = String.fromCharCode(64 + n);
+  const re = new RegExp("—\\s*(DESIGN\\s*)?(" + letter + "|" + n + ")\\s*$", "i");
+  return items.find((x) => re.test(x.name)) || items[n - 1] || null;
+}
+
+// undefined: the row names no crystal · null: it names one that isn't imported · else its key
+function autoKey(r) {
+  const j = parseJenis((S.rows[r] || {}).jenis_plak);
+  if (!j) return undefined;
+  const src = findSource(j.code);
+  const it = src && pickDesign(src.items, j.design);
+  return it ? "lib|" + it.id : null;
+}
+const jenisLabel = (r) => String((S.rows[r] || {}).jenis_plak || "").replace(/\s+/g, " ").trim();
+
 // ------------------------------------------------------------------ templates for a row
 
 function sources() {
@@ -48,8 +114,11 @@ function sources() {
 const currentSource = () => sources().find((s) => s.file === S.source) || null;
 
 function keyFor(r) {
+  r = canon(r);
   const valid = (k) => !!itemOf(k);
-  if (valid(S.rowTpl[r])) return S.rowTpl[r];
+  if (valid(S.rowTpl[r])) return S.rowTpl[r];   // picked by hand for this crystal
+  const auto = autoKey(r);                         // from column F (jenis_plak)
+  if (auto !== undefined) return auto;
   if (valid(S.lastKey)) return S.lastKey;
   const src = currentSource() || sources()[0];
   return src && src.items[0] ? "lib|" + src.items[0].id : null;
@@ -65,16 +134,19 @@ function sceneFor(key, r) {
 let showToken = 0;
 async function show(r, key) {
   const token = ++showToken;
-  S.row = Math.max(0, Math.min(r, S.rows.length - 1));
+  S.row = canon(Math.max(0, Math.min(r, S.rows.length - 1)));
   key = key || keyFor(S.row);
   S.key = key;
   const it = itemOf(key);
   if (it) S.source = it.file;
-  renderRows();
+  renderTable();
   if (!it) {
-    editor.showEmpty(S.library.length
-      ? "Pick a design below to start."
-      : "No crystal templates yet.<br>Press <b>Template folder</b> below to import from your DESIGN TEMPLATE folder, or <b>Import file</b>.");
+    const want = jenisLabel(S.row);
+    editor.showEmpty(want && autoKey(S.row) === null
+      ? `This row needs <b>${esc(want)}</b>, which isn't imported yet.<br>Press <b>Template folder</b> below to import it, or pick another design below to use for this crystal.`
+      : S.library.length
+        ? "Pick a design below to start."
+        : "No crystal templates yet.<br>Press <b>Template folder</b> below to import from your DESIGN TEMPLATE folder, or <b>Import file</b>.");
     renderAll();
     return;
   }
@@ -83,6 +155,7 @@ async function show(r, key) {
   const saved = S.edits[S.row + "|" + key];
   const ok = saved ? await editor.loadState(saved, scene.images) : await editor.build(scene);
   if (!ok || token !== showToken) return;
+  
   renderAll();
 }
 
@@ -117,21 +190,37 @@ function renderElements() {
 }
 const renderElementsSoon = debounce(renderElements, 150);
 
-function rowLabel(rw, i) {
-  const s = Object.values(rw).find((v) => String(v).trim()) || "(empty)";
-  const name = rw.nama || rw.name || s;
-  return `${i + 1}. ${String(name).replace(/\n/g, " ").slice(0, 48)}`;
-}
-
-function renderRows() {
-  $("rowSel").innerHTML = S.rows.map((r, i) => `<option value="${i}">${esc(rowLabel(r, i))}${S.edits[i + "|" + keyFor(i)] ? " ✎" : ""}</option>`).join("");
-  $("rowSel").value = String(S.row);
-  $("rowCount").textContent = `${S.rows.length} row${S.rows.length === 1 ? "" : "s"}`;
-  $("prevRow").disabled = S.row <= 0;
-  $("nextRow").disabled = S.row >= S.rows.length - 1;
+function renderTable() {
+  const cols = shownCols();
+  const cur = S.groupOf[S.row];
+  const cell = (v) => {
+    const s = String(v ?? "").replace(/\s*\n\s*/g, " ").trim();
+    return `<td title="${esc(String(v ?? ""))}">${esc(s)}</td>`;
+  };
+  const head = `<tr><th class="n">#</th>${cols.map((c, i) => `<th><span class="colid">${String.fromCharCode(65 + i)}</span>${esc(c.label)}</th>`).join("")}<th class="n">Rows</th><th class="st"></th></tr>`;
+  const body = S.groups.map((g, gi) => {
+    const r = g.rows[0], key = keyFor(r);
+    const st = !key ? ["⚠", "No crystal template for this row yet"] : S.edits[r + "|" + key] ? ["✎", "Edited"] : ["", ""];
+    return `<tr data-g="${gi}" class="${gi === cur ? "sel" : ""}" aria-selected="${gi === cur}">` +
+      `<td class="n">${r + 1}</td>${cols.map((c) => cell(S.rows[r][c.key])).join("")}` +
+      `<td class="n">${g.rows.length > 1 ? "×" + g.rows.length : ""}</td><td class="st" title="${st[1]}">${st[0]}</td></tr>`;
+  }).join("");
+  $("xlTable").innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
+  const sel = $("xlTable").querySelector("tr.sel");
+  if (sel) sel.scrollIntoView({ block: "nearest" });
+  const n = S.groups.length;
+  $("rowCount").textContent = `Crystal ${cur + 1} of ${n}` + (S.rows.length !== n ? ` · ${S.rows.length} rows` : "");
+  $("prevRow").disabled = cur <= 0;
+  $("nextRow").disabled = cur >= n - 1;
   $("resetRow").disabled = !S.edits[S.row + "|" + S.key];
 }
-const renderRowsSoon = debounce(renderRows, 200);
+const renderTableSoon = debounce(renderTable, 200);
+
+$("xlTable").addEventListener("click", (e) => {
+  const tr = e.target.closest("tr[data-g]");
+  const g = tr && S.groups[+tr.dataset.g];
+  if (g && g.rows[0] !== S.row) show(g.rows[0]);
+});
 
 function renderWarn() {
   const msgs = [];
@@ -139,7 +228,7 @@ function renderWarn() {
   if (it && it.source === "pdf" && !it.texts.length) {
     msgs.push("This design has no live text — its words are part of the picture (converted to outlines in Illustrator). Keep the text live in the .ai to make it editable, or add new text on top.");
   } else if (it && it.texts.length && !editor.objects().some((o) => o.data && o.data.field)) {
-    msgs.push("Tip: drag a chip from Elements onto a text to fill it from the Excel — it stays linked for every row.");
+    msgs.push("Tip: open “Texts on this design” and drag an Excel column onto a text to fill it from the Excel — it stays linked for every row.");
   }
   const mf = [...new Set(editor.objects().filter((o) => editor.isText(o) && o.data && o.data.ps && fallbackFor(o.data.ps)).map((o) => describeFont(o.data.ps)))];
   if (mf.length) msgs.push(`Not installed on this PC (showing a stand-in): ${mf.slice(0, 4).join(", ")}${mf.length > 4 ? "…" : ""}`);
@@ -303,12 +392,19 @@ async function importFiles(files) {
     }
   }
   if (first) {
-    const key = "lib|" + first.id;
-    S.rowTpl[S.row] = key;
-    S.lastKey = key;
-    S.source = first.file;
-    markDirty();
-    await show(S.row, key);
+    thumbCache.clear();
+    if (autoKey(S.row) === undefined) {
+      // this row doesn't say which crystal: use what was just imported
+      const key = "lib|" + first.id;
+      S.rowTpl[S.row] = key;
+      S.lastKey = key;
+      S.source = first.file;
+      markDirty();
+      await show(S.row, key);
+    } else {
+      // column F picks the crystal: the new file may be the one this row (or others) needed
+      await show(S.row);
+    }
   }
   if (bad.length) toast(bad.join("  ·  "), "bad");
   return !bad.length;
@@ -379,9 +475,10 @@ $("folderList").addEventListener("click", async (e) => {
 
 // ------------------------------------------------------------------ rows
 
-$("rowSel").onchange = () => show(+$("rowSel").value);
-$("prevRow").onclick = () => show(S.row - 1);
-$("nextRow").onclick = () => show(S.row + 1);
+// arrows: the next / previous different crystal (rows that are the same are skipped)
+const stepGroup = (d) => { const g = S.groups[S.groupOf[S.row] + d]; if (g) show(g.rows[0]); };
+$("prevRow").onclick = () => stepGroup(-1);
+$("nextRow").onclick = () => stepGroup(1);
 $("resetRow").onclick = async () => {
   if (!S.edits[S.row + "|" + S.key]) return;
   if (!confirm("Throw away your changes on this row and go back to the template's design?")) return;
@@ -393,16 +490,16 @@ $("resetRow").onclick = async () => {
 $("applyAll").onclick = async () => {
   if (!S.key) return;
   const others = [];
-  for (let r = 0; r < S.rows.length; r++) if (r !== S.row && keyFor(r) === S.key) others.push(r);
-  if (!others.length) return toast("No other row uses this design.");
-  if (!confirm(`Copy this row's positions, fonts and extra elements to ${others.length} other row${others.length === 1 ? "" : "s"}? (Each row keeps its own text.)`)) return;
+  for (const g of S.groups) if (g.rows[0] !== S.row && keyFor(g.rows[0]) === S.key) others.push(g.rows[0]);
+  if (!others.length) return toast("No other crystal uses this design.");
+  if (!confirm(`Copy this crystal's positions, fonts and extra elements to ${others.length} other crystal${others.length === 1 ? "" : "s"} with the same design? (Each keeps its own text.)`)) return;
   for (const r of others) {
     const sc = await sceneFor(S.key, r);
     if (sc) S.edits[r + "|" + S.key] = await editor.layoutLike(sc);
   }
   markDirty();
-  renderRows();
-  toast(`Applied to ${others.length} row${others.length === 1 ? "" : "s"}.`);
+  renderTable();
+  toast(`Applied to ${others.length} crystal${others.length === 1 ? "" : "s"}.`);
 };
 
 // ------------------------------------------------------------------ Excel
@@ -433,6 +530,7 @@ async function loadSheet(name) {
   $("sheetSel").value = name;
   S.columns = columns;
   S.rows = rows;
+  buildGroups();
   S.rowTpl = {};
   S.edits = {};
   thumbCache.clear();
@@ -446,7 +544,7 @@ async function loadSheet(name) {
 function resyncRow() {
   for (const o of editor.objects()) {
     const d = o.data || {};
-    if (editor.isText(o) && d.field && !d.tplText) S.rows[S.row][d.field] = o.text;
+    if (editor.isText(o) && d.field && !d.tplText) for (const r of groupRows(S.row)) S.rows[r][d.field] = o.text;
   }
   renderElements();
 }
@@ -456,14 +554,14 @@ editor.initEditor({
     if (!S.key) return;
     S.edits[S.row + "|" + S.key] = state;
     markDirty();
-    renderRowsSoon();
+    renderTableSoon();
     renderElementsSoon();
   },
   restored: resyncRow,
   textChanged: (o) => {
     const d = o.data || {};
     if (!d.field || d.tplText) return;
-    S.rows[S.row][d.field] = o.text;
+    for (const r of groupRows(S.row)) S.rows[r][d.field] = o.text;
     renderElementsSoon();
   },
   selection: onSelection,
@@ -506,10 +604,11 @@ async function exportPdf(all) {
   const rows = all ? S.rows.map((_, i) => i) : [S.row];
   let n = 0;
   for (const r of rows) {
-    const key = r === S.row ? S.key : keyFor(r);
+    const c = canon(r);
+    const key = c === S.row ? S.key : keyFor(c);
     if (!key) continue;
     toast(all ? `Making PDF… ${n + 1} of ${rows.length}` : "Making PDF…");
-    const out = await renderPrint(key, r, all ? "jpeg" : "png");
+    const out = await renderPrint(key, c, all ? "jpeg" : "png");
     if (!out) continue;
     add(out.url, out.w, out.h, all ? "JPEG" : "PNG");
     n++;
@@ -578,6 +677,7 @@ async function openDesign(id) {
     rowTpl: x.rowTpl || {}, edits: x.edits || {}, lastKey: x.lastKey || null, source: x.source || S.source,
     sourceName: x.sourceName || "", sheet: x.sheet || "", wb: null, design: { id: d.id, name: d.name }, dirty: false,
   });
+  buildGroups();
   $("designName").value = d.name;
   $("sheetSel").hidden = true;
   $("srcHint").textContent = S.sourceName ? `${S.sourceName}${S.sheet ? " · " + S.sheet : ""} · ${S.rows.length} rows` : `${S.rows.length} rows`;
@@ -619,6 +719,7 @@ $("openClose").onclick = () => $("openDlg").close();
 $("newBtn").onclick = async () => {
   if (S.dirty && !confirm("Start a new design? Unsaved changes will be lost.")) return;
   Object.assign(S, { columns: SAMPLE_COLUMNS, rows: sampleRows(), row: 0, rowTpl: {}, edits: {}, lastKey: null, sourceName: "", sheet: "", wb: null, design: { id: null, name: "Untitled design" }, dirty: false });
+  buildGroups();
   $("designName").value = S.design.name;
   $("sheetSel").hidden = true;
   $("srcHint").textContent = "Sample data (2 rows)";
@@ -643,5 +744,6 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
   try { setFontList(await store.fonts()); } catch (e) {}
   try { S.library = await store.listLibrary(); } catch (e) { S.library = []; toast(e.message, "bad"); }
   S.source = sources()[0] ? sources()[0].file : null;
+  buildGroups();
   await show(0);
 })();

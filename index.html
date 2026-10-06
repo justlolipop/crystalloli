@@ -16,6 +16,21 @@
 .colsbox{margin-top:8px}
 .tplbar{display:flex;gap:6px;align-items:center;margin-bottom:8px}
 #tplSel{flex:1;min-width:0}
+
+/* the Excel, columns A–F; one line per different crystal */
+.xltable{max-height:300px;overflow:auto;border:1px solid var(--line);border-radius:8px;margin:0 0 4px}
+.xltable:empty{display:none}
+.xltable table{width:100%;border-collapse:collapse;font-size:13px}
+.xltable th,.xltable td{padding:6px 10px;text-align:left;border-bottom:1px solid var(--line);white-space:nowrap;max-width:280px;overflow:hidden;text-overflow:ellipsis}
+.xltable thead th{position:sticky;top:0;z-index:1;background:var(--bg);font-weight:600;font-size:12px;color:var(--mute)}
+.xltable .colid{display:inline-block;min-width:18px;margin-right:6px;padding:0 4px;border-radius:4px;border:1px solid var(--line);background:var(--panel);font-size:11px;text-align:center}
+.xltable .n{width:1%;text-align:right;color:var(--mute);font-variant-numeric:tabular-nums}
+.xltable .st{width:1%;text-align:center}
+.xltable tbody tr{cursor:pointer}
+.xltable tbody tr:last-child td{border-bottom:0}
+.xltable tbody tr:hover{background:var(--bg)}
+.xltable tbody tr.sel{background:var(--accsoft);box-shadow:inset 3px 0 0 var(--acc)}
+.xltable tbody tr.sel .n{color:var(--ink)}
 </style>
 </head>
 <body>
@@ -41,30 +56,31 @@
 
   <section class="panel" aria-labelledby="elH">
     <div class="panel-head">
-      <h2 id="elH">Elements</h2>
+      <h2 id="elH">Excel</h2>
       <span class="hint" id="srcHint">Sample data (2 rows)</span>
       <div class="spacer"></div>
       <select id="sheetSel" hidden aria-label="Sheet"></select>
       <label class="btn">Import Excel<input type="file" id="excelFile" accept=".xlsx,.xlsm,.xls,.csv"></label>
     </div>
-        <div class="elbar">
-      <button id="elAddText">＋ Add text</button>
-      <select id="elAddCol" aria-label="Add an Excel column"></select>
+    <div class="xltable" id="xlTable" role="grid" aria-label="Excel rows — click one to open its crystal"></div>
+    <div class="rowsbar">
+      <button id="prevRow" class="ib" aria-label="Previous crystal" title="Previous different crystal">‹</button>
+      <button id="nextRow" class="ib" aria-label="Next crystal" title="Next different crystal">›</button>
+      <span class="hint" id="rowCount"></span>
+      <div class="spacer"></div>
+      <button id="resetRow" title="Throw away your changes on this crystal">Reset</button>
+      <button id="applyAll" title="Copy positions, fonts and extra elements from this crystal to every crystal that uses the same design">Apply layout to all</button>
     </div>
-    <div class="ellist" id="elList"></div>
-    <details class="colsbox"><summary>Excel columns (drag onto a text to link it)</summary>
+    <details class="colsbox"><summary>Texts on this design</summary>
+      <div class="elbar">
+        <button id="elAddText">＋ Add text</button>
+        <select id="elAddCol" aria-label="Add an Excel column"></select>
+      </div>
+      <div class="ellist" id="elList"></div>
+      <p class="hint" style="margin:8px 0 4px">Excel columns (drag onto a text to link it)</p>
       <div class="chips" id="chips"></div>
     </details>
     <p class="meta" id="meta"></p>
-    <div class="rowsbar">
-      <button id="prevRow" class="ib" aria-label="Previous row">‹</button>
-      <select id="rowSel" aria-label="Excel row"></select>
-      <button id="nextRow" class="ib" aria-label="Next row">›</button>
-      <span class="hint" id="rowCount"></span>
-      <div class="spacer"></div>
-      <button id="resetRow" title="Throw away your changes on this row">Reset</button>
-      <button id="applyAll" title="Copy positions, fonts and extra elements from this design to every row that uses the same template">Apply layout to all rows</button>
-    </div>
     <p id="warn" class="warn" role="status"></p>
   </section>
 

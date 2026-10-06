@@ -1,6 +1,7 @@
 {
   "name": "crystal-studio",
   "version": "0.1.0",
+  "type": "module",
   "private": true,
   "description": "Canva-style editor for crystal award templates: import .ai designs and an Excel list, edit, download for printing.",
   "scripts": {
@@ -8,5 +9,9 @@
   },
   "engines": {
     "node": ">=18"
+  },
+  "dependencies": {
+    "express": "^5.2.1",
+    "multer": "^2.4.0"
   }
 }

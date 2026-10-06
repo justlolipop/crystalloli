@@ -13,6 +13,7 @@ import { loose } from "./util.js";
 import { useFont, findFont } from "./fonts.js";
 import { fitSize } from "./measure.js";
 import { store } from "./store.js";
+import { visibleTextItems, readableText, withoutLiveText } from "./pdftext.js";
 
 const PDF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/g;
@@ -40,6 +41,8 @@ export function fillPlaceholders(text, row, columns) {
 // ------------------------------------------------------------------ scene for one Excel row
 
 export async function libraryScene(item, row, columns) {
+  // SVG Data handling (Inkscape converted artwork)
+
   if (item.source === "svg") {
     const fontMap = {};
     for (const raw of new Set([...item.svg.matchAll(/font-family\s*[:=]\s*["']?([^;"'>]+)/g)].map((m) => m[1]))) {
@@ -49,6 +52,7 @@ export async function libraryScene(item, row, columns) {
     }
     return { type: "svg", svg: item.svg, width: item.width, height: item.height, background: "", row, columns, fontMap };
   }
+
   const texts = [];
   for (const [i, t] of (item.texts || []).entries()) {
     const css = t.ps ? await useFont(t.ps, t.family, t.style) : t.family ? `"${t.family}", sans-serif` : "Arial";
@@ -59,7 +63,6 @@ export async function libraryScene(item, row, columns) {
     else if (field && row[field] != null && String(row[field]).trim()) text = String(row[field]);
     if (!String(text).trim()) continue;
     const size = text === t.text ? t.fontSize : fitSize(text, css, t.fontSize, t.charSpacing, t.scaleX, t.maxW, 4);
-    // the real face already is bold/italic; only fake it when the font isn't on this PC
     const real = css.startsWith("ps_");
     texts.push({
       ...t, text, css, field, fontSize: size, src: i, tplText: hasPh ? t.text : null,
@@ -79,6 +82,8 @@ export async function importFile(file, progress) {
   throw new Error("Use a .ai, .pdf or .svg file.");
 }
 
+
+
 async function importSvg(file) {
   const svg = await file.text();
   const d = new DOMParser().parseFromString(svg, "image/svg+xml").documentElement;
@@ -89,9 +94,6 @@ async function importSvg(file) {
   return { name: file.name.replace(/\.svg$/i, ""), file: file.name, page: 1, source: "svg", width: w, height: h, svg };
 }
 
-// pdf.js draws live text with fillText/strokeText; a context that ignores those two calls gives the
-// artwork without its text. (Patched on the context itself: wrapping it in a Proxy made big
-// crystal sheets ~40× slower to draw.)
 const noop = () => {};
 function withoutText(ctx) {
   ctx.fillText = noop;
@@ -99,7 +101,6 @@ function withoutText(ctx) {
   return ctx;
 }
 
-// pdf.js also draws into scratch canvases (transparency groups, masks): hide text there too
 class CanvasFactory {
   constructor() { this.hideText = false; }
   create(w, h) {
@@ -146,18 +147,19 @@ async function importPdf(file, progress) {
   const base = file.name.replace(/\.(ai|pdf)$/i, "");
   const out = [];
   for (let n = 1; n <= doc.numPages; n++) {
-    progress && progress(`Reading ${file.name}${doc.numPages > 1 ? ` — artboard ${n} of ${doc.numPages}` : ""}…`);
+    progress && progress(`Reading ${file.name}${doc.numPages > 1 ? ` — artboard ${n} of${doc.numPages}` : ""}…`);
     const page = await doc.getPage(n);
     const vp1 = page.getViewport({ scale: 1 });
     const pageW = vp1.width, pageH = vp1.height;
     const S = Math.max(1, Math.min(3, PREVIEW_PX / Math.max(pageW, pageH)));
     const vp = page.getViewport({ scale: S });
     const W = Math.round(vp.width), H = Math.round(vp.height);
-    const tc = await page.getTextContent();
+    // text on hidden layers is left out (Illustrator doesn't show it either)
+    const tc = { items: await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true })) };
     const hasText = tc.items.some((it) => it.str && it.str.trim());
     const bare = makeCanvas(W, H);
     factory.hideText = true;
-    await page.render({ canvasContext: withoutText(bare.ctx), viewport: vp, background: CLEAR }).promise;
+    await withoutLiveText(page, () => page.render({ canvasContext: withoutText(bare.ctx), viewport: vp, background: CLEAR }).promise);
     factory.hideText = false;
     const bareData = bare.ctx.getImageData(0, 0, W, H).data;
     let blocks = [];
@@ -174,7 +176,6 @@ async function importPdf(file, progress) {
     const outside = regions.length ? blocks.filter((b) => !regions.some((r) => inside(b, r))) : [];
     const usedLabels = new Set();
     parts.forEach((r, i) => {
-      // its name: a short label just under (or over) the design, like "DESIGN A"
       let label = null;
       if (regions.length) {
         let best = null;
@@ -199,12 +200,8 @@ async function importPdf(file, progress) {
   return out;
 }
 
-// ------------------------------------------------------------------ several designs on one artboard
-
-// Separate shapes of artwork (with a ~1.5 mm reach, so dashed cut lines and nearby bits join up)
-// = separate designs. Returns [] when the artboard is really just one design.
 function findDesigns(data, W, H, S, pageW, pageH) {
-  const g = Math.max(2, Math.ceil(Math.max(W, H) / 500)); // grid cell, in pixels
+  const g = Math.max(2, Math.ceil(Math.max(W, H) / 500));
   const gw = Math.ceil(W / g), gh = Math.ceil(H / g);
   const ink = new Uint8Array(gw * gh);
   for (let y = 0; y < H; y++) {
@@ -213,13 +210,13 @@ function findDesigns(data, W, H, S, pageW, pageH) {
   }
   const rad = Math.max(1, Math.round((4 * S) / g));
   const grown = new Uint8Array(gw * gh), tmp = new Uint8Array(gw * gh);
-  for (let y = 0; y < gh; y++) { // grow sideways…
+  for (let y = 0; y < gh; y++) {
     let last = -1e9;
     for (let x = 0; x < gw; x++) if (ink[y * gw + x]) last = x; else if (x - last <= rad) tmp[y * gw + x] = 1;
     last = 1e9;
     for (let x = gw - 1; x >= 0; x--) { if (ink[y * gw + x]) { last = x; tmp[y * gw + x] = 1; } else if (last - x <= rad) tmp[y * gw + x] = 1; }
   }
-  for (let x = 0; x < gw; x++) { // …then up and down
+  for (let x = 0; x < gw; x++) {
     let last = -1e9;
     for (let y = 0; y < gh; y++) if (tmp[y * gw + x]) { last = y; grown[y * gw + x] = 1; } else if (y - last <= rad) grown[y * gw + x] = 1;
     last = 1e9;
@@ -250,7 +247,6 @@ function findDesigns(data, W, H, S, pageW, pageH) {
     const x = Math.min(a.x, b.x), y = Math.min(a.y, b.y);
     a.w = Math.max(a.x + a.w, b.x + b.w) - x; a.h = Math.max(a.y + a.h, b.y + b.h) - y; a.x = x; a.y = y;
   };
-  // small bits (a stand, a loose star) belong to the design right above / below / around them
   for (const s of boxes) {
     if (big.includes(s)) continue;
     let best = null, bestGap = Infinity;
@@ -277,7 +273,6 @@ function findDesigns(data, W, H, S, pageW, pageH) {
     const x = Math.max(0, b.x - PAD), y = Math.max(0, b.y - PAD);
     b.w = Math.min(pageW, b.x + b.w + PAD) - x; b.h = Math.min(pageH, b.y + b.h + PAD) - y; b.x = x; b.y = y;
   }
-  // reading order: rows top to bottom, then left to right
   big.sort((a, b) => a.y - b.y);
   const rows = [];
   for (const b of big) {
@@ -287,13 +282,10 @@ function findDesigns(data, W, H, S, pageW, pageH) {
   return rows.flatMap((r) => r.items.sort((a, b) => a.x - b.x));
 }
 
-// ------------------------------------------------------------------ text from a pdf page
-
 function toHex(r, g, b) {
   return "#" + [r, g, b].map((v) => Math.max(0, Math.min(255, Math.round(v))).toString(16).padStart(2, "0")).join("");
 }
 
-// colour of the text = the most common colour among the pixels that change when text is hidden
 function colourIn(fullData, bareData, W, H, x0, y0, x1, y1) {
   x0 = Math.max(0, Math.floor(x0)); y0 = Math.max(0, Math.floor(y0));
   x1 = Math.min(W, Math.ceil(x1)); y1 = Math.min(H, Math.ceil(y1));
@@ -311,13 +303,17 @@ function colourIn(fullData, bareData, W, H, x0, y0, x1, y1) {
       buckets.set(key, b);
     }
   }
-  let best = null;
-  for (const b of buckets.values()) if (!best || b.n > best.n) best = b;
-  return best ? toHex(best.r / best.n, best.g / best.n, best.b / best.n) : "#000000";
+  let best = null, changed = 0;
+  for (const b of buckets.values()) { changed += b.n; if (!best || b.n > best.n) best = b; }
+  return {
+    color: best ? toHex(best.r / best.n, best.g / best.n, best.b / best.n) : "#000000",
+    // how much of the box the text really paints. ~0 = the text isn't visible on the artboard
+    // (a hidden layer, an old version kept under the artwork, clipped away, or a 0% opacity copy)
+    ink: changed / Math.max(1, (x1 - x0) * (y1 - y0)),
+  };
 }
 
 function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
-  // 1) text runs in canvas pixels (Illustrator often writes the same text twice, e.g. fill + stroke)
   const runs = [];
   const seen = new Set();
   for (const it of tc.items) {
@@ -325,43 +321,68 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
     const t = pdfjsLib.Util.transform(vp.transform, it.transform);
     const fh = Math.hypot(t[2], t[3]);
     if (!(fh > 0.5)) continue;
-    const key = `${it.str}|${Math.round(t[4])}|${Math.round(t[5])}|${Math.round(fh)}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    let ps = "", bold = false, italic = false;
+    let ps = "", bold = false, italic = false, f = null;
     try {
-      const f = page.commonObjs.get(it.fontName);
+      f = page.commonObjs.get(it.fontName);
       ps = String(f.name || "").replace(/^[A-Z]{6}\+/, "");
       bold = !!(f.bold || f.black);
       italic = !!f.italic;
     } catch (e) {}
+    // a script font's alternate letters ("n.alt") come through as control characters: use the letter
+    const str = readableText(it.str, f);
+    if (!str.trim()) continue;
+    const key = `${str}|${Math.round(t[4])}|${Math.round(t[5])}|${Math.round(fh)}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
     runs.push({
-      str: it.str, x: t[4], y: t[5], w: it.width * S, fh, font: it.fontName, ps, bold, italic,
+      str, x: t[4], y: t[5], w: it.width * S, fh, font: it.fontName, ps, bold, italic,
       hs: Math.hypot(t[0], t[1]) / fh, angle: Math.atan2(t[1], t[0]) * 180 / Math.PI,
     });
   }
 
-  // 2) runs on the same baseline, same font, close together -> one line
+  // Join the pieces of one line. Illustrator often writes a line as many small pieces (kerned
+  // letters, a letter in a substitute font), so pieces on the same baseline and of about the same
+  // size are joined even when their font differs, and they're joined left to right.
+  const sorted = runs.sort((a, b) => a.y - b.y || a.x - b.x);
   const lines = [];
-  for (const r of runs.sort((a, b) => a.y - b.y || a.x - b.x)) {
-    const ln = Math.abs(r.angle) > 0.5 ? null : lines.find((l) => !l.rotated && l.font === r.font && Math.abs(l.fh - r.fh) < 0.6 &&
-      Math.abs(l.y - r.y) < r.fh * 0.35 && r.x - (l.x + l.w) < r.fh * 1.2 && r.x - (l.x + l.w) > -r.fh * 0.6);
+  for (const r of sorted) {
+    const rotated = Math.abs(r.angle) > 0.5;
+    const ln = rotated ? null : lines.find((l) => !l.rotated && Math.abs(l.fh - r.fh) < Math.max(0.6, r.fh * 0.15) &&
+      Math.abs(l.y - r.y) < r.fh * 0.35 && r.x - l.end < r.fh * 1.2 && r.x + r.w > l.start - r.fh * 0.6);
     if (ln) {
-      const gap = r.x - (ln.x + ln.w);
-      ln.str += gap > r.fh * 0.12 && !/\s$/.test(ln.str) && !/^\s/.test(r.str) ? " " + r.str : r.str;
-      ln.w = Math.max(ln.w, r.x + r.w - ln.x);
-    } else {
-      lines.push({ ...r, rotated: Math.abs(r.angle) > 0.5 });
-    }
+      ln.parts.push(r);
+      ln.start = Math.min(ln.start, r.x);
+      ln.end = Math.max(ln.end, r.x + r.w);
+    } else lines.push({ ...r, rotated, parts: [r], start: r.x, end: r.x + r.w });
   }
   for (const l of lines) {
-    l.str = l.str.replace(/\s+/g, " ").trim();
-    l.color = l.rotated ? "#000000" : colourIn(fullData, bareData, W, H, l.x, l.y - l.fh * 0.85, l.x + l.w, l.y + l.fh * 0.25);
+    const parts = l.parts.sort((a, b) => a.x - b.x);
+    let str = "", end = null;
+    for (const p of parts) {
+      const gap = end === null ? 0 : p.x - end;
+      if (end !== null && gap > p.fh * 0.12 && !/\s$/.test(str) && !/^\s/.test(p.str)) str += " ";
+      str += p.str;
+      end = Math.max(end ?? -Infinity, p.x + p.w);
+    }
+    const x0 = Math.min(...parts.map((p) => p.x));
+    l.x = x0;
+    l.w = end - x0;
+    l.str = str.replace(/\s+/g, " ").trim();
+    // the font the most letters use
+    const count = {};
+    for (const p of parts) count[p.font] = (count[p.font] || 0) + p.str.length;
+    const main = parts.find((p) => p.font === Object.keys(count).sort((a, b) => count[b] - count[a])[0]);
+    Object.assign(l, { font: main.font, ps: main.ps, bold: main.bold, italic: main.italic });
+    if (l.rotated) { l.color = "#000000"; l.ink = 1; continue; }
+    const c = colourIn(fullData, bareData, W, H, l.x, l.y - l.fh * 0.85, l.x + l.w, l.y + l.fh * 0.25);
+    l.color = c.color;
+    l.ink = c.ink;
   }
 
-  // 3) lines stacked under each other with the same style -> one multi-line text
   const blocks = [];
-  for (const ln of lines.filter((l) => l.str)) {
+  // text that paints nothing on the artboard isn't part of the design: leave it out, or it shows
+  // up as an extra editable copy on top of the real artwork
+  for (const ln of lines.filter((l) => l.str && l.ink >= 0.01)) {
     const cx = ln.x + ln.w / 2;
     const b = ln.rotated ? null : blocks.find((b) => {
       const last = b.lines[b.lines.length - 1];
@@ -376,7 +397,6 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
     else blocks.push({ font: ln.font, fh: ln.fh, color: ln.color, rotated: ln.rotated, lines: [ln], gap: 0 });
   }
 
-  // 4) -> blocks in pt, with their outline (placement is decided per design in finishText)
   return blocks.map((b) => {
     const first = b.lines[0], last = b.lines[b.lines.length - 1];
     const lefts = b.lines.map((l) => l.x / S), rights = b.lines.map((l) => (l.x + l.w) / S);
@@ -397,7 +417,7 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
     };
     out.cx = (out.l + out.r) / 2;
     out.cy = (out.top + out.bottom) / 2;
-    if (b.rotated) { // keep the baseline-start point, rotate around the text's top-left
+    if (b.rotated) {
       const a = first.angle * Math.PI / 180;
       out.rotLeft = first.x / S + Math.sin(a) * BASELINE * size;
       out.rotTop = first.y / S - Math.cos(a) * BASELINE * size;
@@ -408,7 +428,6 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
   });
 }
 
-// a text block -> template text, placed relative to its design
 function finishText(b, r) {
   let align = b.align;
   if (b.lines === 1) align = Math.abs(b.cx - (r.x + r.w / 2)) < r.w * 0.06 ? "center" : "left";
@@ -437,7 +456,6 @@ function openOriginal(rel) {
   return originals.get(rel);
 }
 
-// the design's artwork (no text) redrawn from the original file at `dpi` -> PNG data URL, or null
 export function hiResBackground(item, dpi) {
   if (!item || !item.original || item.source !== "pdf") return Promise.resolve(null);
   const key = item.id + "|" + dpi;
@@ -447,10 +465,10 @@ export function hiResBackground(item, dpi) {
         const doc = await openOriginal(item.original);
         const page = await doc.getPage(item.page || 1);
         const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
-        const k = Math.min(dpi / 72, Math.sqrt(80e6 / (w * h))); // stay under ~80 megapixels
+        const k = Math.min(dpi / 72, Math.sqrt(80e6 / (w * h)));
         const vp = page.getViewport({ scale: k, offsetX: -x * k, offsetY: -y * k });
         const c = makeCanvas(Math.round(w * k), Math.round(h * k));
-        await page.render({ canvasContext: withoutText(c.ctx), viewport: vp, background: CLEAR }).promise;
+        await withoutLiveText(page, () => page.render({ canvasContext: withoutText(c.ctx), viewport: vp, background: CLEAR }).promise);
         const url = c.canvas.toDataURL("image/png");
         c.canvas.width = c.canvas.height = 0;
         return url;

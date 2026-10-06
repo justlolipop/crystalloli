@@ -13,9 +13,19 @@
 //
 // It only listens on this PC (127.0.0.1), so nobody else on the network can reach it.
 
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
+import express from 'express';
+import multer from 'multer';
+import { exec } from 'child_process';
+import fs from 'fs';
+import path from 'path';
+import http from 'http';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+const app = express();
+const upload = multer({ dest: 'uploads/' });
 
 const PORT = +process.env.STUDIO_PORT || 5190;
 const APP_DIR = __dirname;
@@ -35,7 +45,7 @@ const MIME = {
 const newId = () => Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 
 function readJson(file, fallback) {
-  try { return JSON.parse(fs.readFileSync(file, "utf8").replace(/^﻿/, "")); } catch (e) { return fallback; }
+  try { return JSON.parse(fs.readFileSync(file, "utf8").replace(/^/, "")); } catch (e) { return fallback; }
 }
 function writeJson(file, obj) { fs.writeFileSync(file, JSON.stringify(obj)); }
 
@@ -45,7 +55,6 @@ function config() {
   const c = readJson(CONFIG_FILE, {});
   return {
     templateFolder: c.templateFolder || "",
-    // fonts list made by Plak Master's scan (ExportTemplates.jsx) — the fonts Illustrator sees
     fontsFile: path.resolve(APP_DIR, c.fontsFile || path.join("..", "webapp", "templates", "_fonts.json")),
   };
 }
@@ -127,7 +136,6 @@ function libraryDelete(id) {
     const f = path.join(LIBRARY_DIR, id + ext);
     if (fs.existsSync(f)) fs.unlinkSync(f);
   }
-  // the original file is shared by every design cut from it: remove it with the last one
   if (item.original && !libraryList().some((x) => x.original === item.original)) {
     const f = path.join(APP_DIR, item.original);
     if (fs.existsSync(f)) fs.unlinkSync(f);
@@ -196,7 +204,6 @@ function send(res, status, obj) {
   res.end(JSON.stringify(obj));
 }
 
-// Serves a file only if it really is inside baseDir (no ../ tricks)
 function sendFile(res, baseDir, rel) {
   const full = path.resolve(baseDir, rel);
   if (!full.startsWith(path.resolve(baseDir) + path.sep) || !fs.existsSync(full) || !fs.statSync(full).isFile()) {
@@ -206,7 +213,8 @@ function sendFile(res, baseDir, rel) {
   fs.createReadStream(full).pipe(res);
 }
 
-const server = http.createServer(async (req, res) => {
+// Handler function for native HTTP requests
+async function handleNativeRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
   let p;
   try { p = decodeURIComponent(url.pathname); } catch (e) { return send(res, 400, { error: "Bad path" }); }
@@ -253,7 +261,48 @@ const server = http.createServer(async (req, res) => {
   } catch (e) {
     return send(res, 500, { error: e.message });
   }
+}
+
+// ---------------------------------------------------------------- express routes
+
+// Route handler for converting vector AI/PDF to SVG using Inkscape
+app.post('/api/convert-ai', upload.single('aiFile'), (req, res) => {
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: 'No file uploaded.' });
+  }
+
+  const inputPath = req.file.path;
+  const outputPath = `${inputPath}.svg`;
+ // Updated line (using full path to Inkscape):
+  const inkscapeExe = `"C:\\Program Files\\WindowsApps\\25415Inkscape.Inkscape_1.4.40.0_x64__9waqn51p1ttv2\\VFS\\ProgramFilesX64\\Inkscape\\bin\\inkscape.exe"`;
+  const command = `${inkscapeExe} "${inputPath}" --export-filename="${outputPath}"`;
+
+  exec(command, (error, stdout, stderr) => {
+    if (error) {
+      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+      return res.status(500).json({ success: false, error: 'Inkscape conversion failed.' });
+    }
+
+    fs.readFile(outputPath, 'utf8', (err, svgData) => {
+      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
+      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
+
+      if (err) {
+        return res.status(500).json({ success: false, error: 'Failed to read converted SVG.' });
+      }
+
+      res.json({ success: true, svg: svgData });
+    });
+  });
 });
+
+// Fallback all other routes to native static/API logic
+app.use((req, res) => {
+  handleNativeRequest(req, res);
+});
+
+// Create and start server using express app handler
+const server = http.createServer(app);
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Crystal Studio running: http://localhost:${PORT}`);

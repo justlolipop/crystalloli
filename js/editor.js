@@ -244,6 +244,7 @@ export async function build(scene) {
   } finally {
     ed.quiet--;
   }
+  linkTextBackgrounds(cv);
   resetHistory();
   syncToolbar();
   return true;
@@ -774,5 +775,121 @@ function wireDrop() {
     }
     const p = cv.getPointer(e);
     ed.hooks.dropField && ed.hooks.dropField(f, { x: Math.max(0, Math.min(ed.W, p.x)), y: Math.max(0, Math.min(ed.H, p.y)) });
+  });
+}
+
+/**
+ * Automatically groups text layers that overlap (like drop shadows or outline duplicates)
+ * so they move, scale, and rotate together on the canvas.
+ */
+export function groupOverlappingTexts(canvas) {
+  if (!canvas) return;
+  
+  const objects = canvas.getObjects();
+  const textObjects = objects.filter(
+    (obj) => obj.type === 'text' || obj.type === 'i-text' || obj.type === 'textbox'
+  );
+
+  const processed = new Set();
+
+  for (let i = 0; i < textObjects.length; i++) {
+    for (let j = i + 1; j < textObjects.length; j++) {
+      const objA = textObjects[i];
+      const objB = textObjects[j];
+
+      if (processed.has(objA) || processed.has(objB)) continue;
+
+      // Distance check: see if the two text layers are stacked on top of each other
+      const deltaX = Math.abs(objA.left - objB.left);
+      const deltaY = Math.abs(objA.top - objB.top);
+
+      // If they are within 15px of each other, group them together
+      if (deltaX < 15 && deltaY < 15) {
+        // Remove individual unlinked canvas objects
+        canvas.remove(objA);
+        canvas.remove(objB);
+
+        // Group background shadow + front text together
+        const comboGroup = new fabric.Group([objB, objA], {
+          left: objA.left,
+          top: objA.top,
+          originX: 'center',
+          originY: 'center',
+          subTargetCheck: true // Allows double-clicking inner text to edit
+        });
+
+        canvas.add(comboGroup);
+        processed.add(objA);
+        processed.add(objB);
+      }
+    }
+  }
+
+  canvas.renderAll();
+}
+
+/**
+ * 建立主文字与背景/阴影文字的动态绑定关系（不改变坐标和层级，拖动时自动跟随）
+ */
+/**
+ * Links duplicate text layers (drop shadows/outlines) by matching exact string content
+ * and tracks movement using Fabric.js matrix updates without modifying object origins.
+ */
+export function linkTextBackgrounds(canvas) {
+  if (!canvas) return;
+
+  const objects = canvas.getObjects();
+  const texts = objects.filter(
+    (o) => o.type === 'text' || o.type === 'i-text' || o.type === 'textbox'
+  );
+
+  for (let i = 0; i < texts.length; i++) {
+    for (let j = i + 1; j < texts.length; j++) {
+      const t1 = texts[i];
+      const t2 = texts[j];
+
+      // Match layers ONLY if they contain identical text content
+      const str1 = (t1.text || '').trim();
+      const str2 = (t2.text || '').trim();
+
+      if (str1 && str1 === str2) {
+        // Calculate center-point distance to avoid originX/originY misalignment issues
+        const c1 = t1.getCenterPoint();
+        const c2 = t2.getCenterPoint();
+        const dist = Math.hypot(c1.x - c2.x, c1.y - c2.y);
+
+        // Only pair them if their centers are within 30px (valid shadow/background duplicate)
+        if (dist < 30) {
+          // Top layer is usually later in the SVG DOM array or has higher z-index
+          const main = j > i ? t2 : t1;
+          const shadow = j > i ? t1 : t2;
+
+          if (!main._followers) main._followers = [];
+
+          main._followers.push({
+            child: shadow,
+            offsetX: shadow.left - main.left,
+            offsetY: shadow.top - main.top
+          });
+        }
+      }
+    }
+  }
+
+  // Bind smooth follower logic on drag (once per canvas, and without removing the snap guides)
+  if (canvas._followersWired) return;
+  canvas._followersWired = true;
+  canvas.on('object:moving', (e) => {
+    const target = e.target;
+    if (target && target._followers) {
+      target._followers.forEach((f) => {
+        f.child.set({
+          left: target.left + f.offsetX,
+          top: target.top + f.offsetY
+        });
+        f.child.setCoords();
+      });
+      canvas.requestRenderAll();
+    }
   });
 }
