@@ -3,7 +3,8 @@
 // row's words into the design's own text frames, and saves it as a new .ai. The artwork, the
 // pattern and the cut line are never redrawn, so they stay exactly as drawn (vector).
 //
-// job = { folder, outDir?, keepOpen?, rows: [{ row, file, page, region: [x, y, w, h], name, texts: [change] }] }
+// job = { folder, outDir?, keepOpen?, rows: [{ row, file, path?, page, region: [x, y, w, h], name, texts: [change] }] }
+// (path: the exact .ai the studio imported this design from; else file is looked for in folder)
 // (outDir: save there without asking; keepOpen: leave the new .ai files open in Illustrator)
 // change = { orig: box, now: box } (a template text that changed), { orig, deleted: true }, or
 //          { now } (a text added in the studio). box = { text, l, t, r, b, size, fill, align, ps }
@@ -37,17 +38,19 @@ var JOB = __JOB__;
   function pad(n) { n = String(n); while (n.length < 3) n = "0" + n; return n; }
   function safe(s) { return String(s || "design").replace(/[\\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
 
-  function source(file) {
-    if (opened[file]) return opened[file];
-    var f = new File(base + "/" + file);
+  function source(r) {
+    var file = r.file, key = r.path || file;
+    if (opened[key]) return opened[key];
+    var f = r.path ? new File(String(r.path).replace(/\\/g, "/")) : null;
+    if (!f || !f.exists) f = new File(base + "/" + file);
     if (!f.exists) {
       app.userInteractionLevel = level;
       f = File.openDialog("Crystal Studio: where is " + file + "?");
       app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
       if (!f) return null;
     }
-    opened[file] = app.open(f);
-    return opened[file];
+    opened[key] = app.open(f);
+    return opened[key];
   }
 
   // at least half of the item lies inside the design's box (Illustrator's y goes up)
@@ -107,7 +110,7 @@ var JOB = __JOB__;
   }
 
   function makeRow(r) {
-    var src = source(r.file);
+    var src = source(r);
     if (!src) throw new Error("couldn't find " + r.file);
     var ab = src.artboards[(r.page || 1) - 1].artboardRect; // [left, top, right, bottom]
     var L = ab[0] + r.region[0], T = ab[1] - r.region[1], R = L + r.region[2], B = T - r.region[3];

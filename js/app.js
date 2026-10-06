@@ -594,7 +594,8 @@ async function illustratorJob(all) {
       if (!same) texts.push({ orig: o, now: n });
     }
     for (const o of orig) if (!now.some((n) => n.src === o.src)) texts.push({ orig: o, deleted: true });
-    rows.push({ row: r + 1, file: it.file, page: it.page || 1, region: it.region || [0, 0, it.width, it.height], name: it.name, texts });
+    rows.push({ row: r + 1, file: it.file, original: it.original || null, page: it.page || 1,
+      region: it.region || [0, 0, it.width, it.height], name: it.name, texts });
   }
   let folder = "";
   try { folder = (await store.folder()).folder || ""; } catch (e) {}
