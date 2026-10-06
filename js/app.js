@@ -11,13 +11,17 @@ import * as editor from "./editor.js";
 import { store } from "./store.js";
 
 const PRINT_DPI = 300;
+// same columns as the master order Excel (event_header, year, position, event_line_1, …)
 const SAMPLE_COLUMNS = [
-  { key: "sekolah", label: "Sekolah" }, { key: "majlis", label: "Majlis" }, { key: "anugerah", label: "Anugerah" },
-  { key: "nama", label: "Nama" }, { key: "tahun", label: "Tahun" },
+  { key: "event_header", label: "event_header" }, { key: "year", label: "year" }, { key: "position", label: "position" },
+  { key: "event_line_1", label: "event_line_1" }, { key: "event_line_2", label: "event_line_2" },
+  { key: "jenis_plak", label: "jenis_plak" }, { key: "category", label: "category" },
 ];
 const sampleRows = () => [
-  { sekolah: "SK KAMPUNG JAWA", majlis: "MAJLIS ANUGERAH KECEMERLANGAN", anugerah: "GURU CEMERLANG", nama: "NORMA BINTI SHUKOR", tahun: "2026" },
-  { sekolah: "SK KAMPUNG JAWA", majlis: "MAJLIS ANUGERAH KECEMERLANGAN", anugerah: "PENOLONG KANAN HEBAT", nama: "ABDUL MOEIS BIN ABDUL SHUKOR", tahun: "2026" },
+  { event_header: "SK TAMAN SERI PAGI\nANUGERAH SERI PAGI (ASPA) 2026", year: "", position: "PENGAWAS\nPUSAT SUMBER\nSEKOLAH",
+    event_line_1: "AHMAD FIRASH IMAN", event_line_2: "", jenis_plak: "CRYSTAL / AK7 / DESIGN C", category: "TOKOH" },
+  { event_header: "SK TAMAN SERI PAGI\nANUGERAH SERI PAGI (ASPA) 2026", year: "", position: "MURID\nCEMERLANG",
+    event_line_1: "NUR AISYAH BINTI AHMAD", event_line_2: "", jenis_plak: "CRYSTAL / SA4 / DESIGN A", category: "MURID" },
 ];
 
 const S = {
