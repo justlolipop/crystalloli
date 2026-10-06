@@ -146,16 +146,32 @@ async function drawBare(page, textItems, c, vp) {
   return { without, ghosts };
 }
 
-// The outline Illustrator drew around a text (as shapes behind it), so the editable text keeps it.
-// b: a text block in pt -> { stroke, strokeWidth, paintFirst } or {}
+// The outlines Illustrator drew around a text (as shapes behind it), so the editable text keeps
+// them. Often two: a thin one in the text's own colour (it makes a thin font look bold) and a wide
+// one in another colour around that. b: a text block in pt -> outline properties, or {}
 function outlineOf(b, ghosts) {
-  const lines = ghosts.filter((g) => g.stroke && g.lw > 0.2 && g.x0 < b.r && g.x1 > b.l && g.y0 < b.bottom && g.y1 > b.top);
+  // most of the outline shape lies on this text (a neighbour's swash may reach into its box)
+  const mine = (g) => {
+    const w = Math.min(g.x1, b.r) - Math.max(g.x0, b.l), h = Math.min(g.y1, b.bottom) - Math.max(g.y0, b.top);
+    return w > 0 && h > 0 && w * h >= 0.5 * (g.x1 - g.x0) * (g.y1 - g.y0);
+  };
+  const lines = ghosts.filter((g) => g.stroke && g.lw > 0.2 && mine(g));
   if (!lines.length) return {};
-  const count = {};
-  for (const g of lines) count[g.color] = (count[g.color] || 0) + 1;
-  const color = Object.keys(count).sort((p, q) => count[q] - count[p])[0];
-  const lw = Math.max(...lines.filter((g) => g.color === color).map((g) => g.lw));
-  return { stroke: color, strokeWidth: Math.round(lw * 100) / 100, paintFirst: "stroke", strokeLineJoin: "round" };
+  const rgb = (h) => [1, 3, 5].map((i) => parseInt(String(h).slice(i, i + 2), 16) || 0);
+  const like = (a, c) => rgb(a).reduce((s, v, i) => s + Math.abs(v - rgb(c)[i]), 0) < 40;
+  const width = (list) => Math.round(Math.max(...list.map((g) => g.lw)) * 100) / 100;
+  const own = lines.filter((g) => like(g.color, b.fill)), other = lines.filter((g) => !like(g.color, b.fill));
+  const out = {};
+  if (other.length) {
+    const count = {};
+    for (const g of other) count[g.color] = (count[g.color] || 0) + 1;
+    const color = Object.keys(count).sort((p, q) => count[q] - count[p])[0];
+    const w = width(other.filter((g) => g.color === color));
+    if (own.length) Object.assign(out, { outerStroke: color, outerStrokeWidth: w });
+    else Object.assign(out, { stroke: color, strokeWidth: w, paintFirst: "stroke" });
+  }
+  if (own.length) Object.assign(out, { stroke: b.fill, strokeWidth: width(own) });
+  return { ...out, strokeLineJoin: "round" };
 }
 
 // each live text's box in pt from the page's top-left, with room for an outline around it
@@ -506,7 +522,8 @@ function finishText(b, r) {
     left: (b.rotated ? b.rotLeft : ax) - r.x, top: (b.rotated ? b.rotTop : b.top) - r.y,
     originX: align, textAlign: align, angle: b.angle, fontSize: b.fontSize, fill: b.fill, charSpacing: 0,
     lineHeight: b.lineHeight, scaleX: b.scaleX, scaleY: 1, maxW: Math.max(room * 0.96, b.widest), field: null,
-    ...(b.stroke ? { stroke: b.stroke, strokeWidth: b.strokeWidth, paintFirst: b.paintFirst, strokeLineJoin: b.strokeLineJoin } : {}),
+    ...(b.stroke ? { stroke: b.stroke, strokeWidth: b.strokeWidth, paintFirst: b.paintFirst || "fill", strokeLineJoin: b.strokeLineJoin } : {}),
+    ...(b.outerStroke ? { outerStroke: b.outerStroke, outerStrokeWidth: b.outerStrokeWidth } : {}),
   };
 }
 

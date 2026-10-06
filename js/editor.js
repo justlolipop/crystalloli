@@ -7,9 +7,30 @@ import { fieldFromText, fillPlaceholders } from "./library.js";
 import { fitSize } from "./measure.js";
 
 export const PROPS = ["data", "selectable", "evented", "hasControls", "lockMovementX", "lockMovementY", "lockScalingX",
-  "lockScalingY", "lockRotation", "editable", "hoverCursor"];
+  "lockScalingY", "lockRotation", "editable", "hoverCursor", "outerStroke", "outerStrokeWidth"];
 const SHAPES = ["rect", "circle", "ellipse", "line", "triangle", "polygon", "polyline", "path"];
 export const isText = (o) => !!o && (o.type === "i-text" || o.type === "textbox" || o.type === "text");
+
+// A second, wider outline painted behind a text's own outline and fill. Illustrator texts often
+// have two: a thin one in the text's colour that makes a thin font look bold, and a wide white one.
+if (!fabric.Text.prototype._outerStroke) {
+  const baseRender = fabric.Text.prototype._renderText, baseCache = fabric.Text.prototype.shouldCache;
+  Object.assign(fabric.Text.prototype, {
+    _outerStroke: true,
+    _renderText(ctx) {
+      if (this.outerStroke && this.outerStrokeWidth > 0) {
+        const s = this.stroke, w = this.strokeWidth, j = this.strokeLineJoin;
+        Object.assign(this, { stroke: this.outerStroke, strokeWidth: this.outerStrokeWidth, strokeLineJoin: "round" });
+        ctx.lineJoin = "round";
+        this._renderTextStroke(ctx);
+        Object.assign(this, { stroke: s, strokeWidth: w, strokeLineJoin: j });
+      }
+      baseRender.call(this, ctx);
+    },
+    // the cached picture of a text only leaves room for its own outline: draw these directly
+    shouldCache() { return this.outerStroke ? (this.ownCaching = false) : baseCache.call(this); },
+  });
+}
 export const isTemplateImage = (o) => !!o && !!o.data && (o.data.role === "bg" || o.data.role === "art");
 const isShape = (o) => !!o && SHAPES.includes(o.type);
 
@@ -133,6 +154,7 @@ export function makeText(t) {
     fontFamily: t.css || "Arial", fontSize: t.fontSize || 12, fontWeight: t.fontWeight || "normal", fontStyle: t.fontStyle || "normal",
     fill: t.fill || "#000000", stroke: t.stroke || null, strokeWidth: t.stroke ? t.strokeWidth || 0.2 : 0,
     paintFirst: t.paintFirst || "fill", strokeLineJoin: t.strokeLineJoin || "miter",
+    outerStroke: t.outerStroke || null, outerStrokeWidth: t.outerStroke ? t.outerStrokeWidth || 0 : 0,
     charSpacing: t.charSpacing || 0, lineHeight: t.lineHeight || 1, scaleX: t.scaleX || 1, scaleY: t.scaleY || 1, angle: t.angle || 0,
     data: {
       role: "text", field: t.field || null, ps: t.ps || null, frame: t.frame || null, src: t.src ?? null, tplText: t.tplText || null,
@@ -354,7 +376,8 @@ const identity = (o) => {
   if (d.field && d.defLeft != null) return "f:" + d.field;
   return null;
 };
-const COPY = ["left", "top", "angle", "scaleX", "scaleY", "skewX", "skewY", "flipX", "flipY", "fill", "stroke", "strokeWidth", "paintFirst", "opacity",
+const COPY = ["left", "top", "angle", "scaleX", "scaleY", "skewX", "skewY", "flipX", "flipY", "fill", "stroke", "strokeWidth", "paintFirst",
+  "outerStroke", "outerStrokeWidth", "opacity",
   "charSpacing", "lineHeight", "fontWeight", "fontStyle", "underline", "textAlign", "visible",
   "lockMovementX", "lockMovementY", "lockScalingX", "lockScalingY", "lockRotation", "hasControls", "editable"];
 
