@@ -178,6 +178,7 @@ function paintedThings(list, start) {
       items.push({
         op: i, x0: b[0], y0: b[1], x1: b[2], y1: b[3], stroke: STROKES.has(f), path: PATH_PAINT.has(f),
         color: STROKES.has(f) ? st.stroke : PATH_PAINT.has(f) ? st.fill : "", bm: st.gbm || st.bm,
+        lw: STROKES.has(f) ? Math.hypot(st.m[0], st.m[1]) * (st.lw || 1) : 0,
       });
     }
   }

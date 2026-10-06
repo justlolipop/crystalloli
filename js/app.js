@@ -41,9 +41,8 @@ const columnsForUi = () => S.columns.map((c) => ({ key: c.key, label: c.label })
 
 // ------------------------------------------------------------------ the Excel table
 // Only columns A–F are shown; the rest (category, line_order, …) are still read and kept.
-// Rows whose A–F are all the same are one crystal: it's shown once (×N), edited once, and the
-// arrows jump straight to the next different crystal. Every row still gets its own page in
-// "PDF of every row".
+// Every Excel row is shown and edited on its own; its crystal comes from its jenis_plak, so rows
+// with the same jenis_plak use the same template.
 
 const SHOWN_COLUMNS = 6;
 const shownCols = () => S.columns.slice(0, SHOWN_COLUMNS);
@@ -51,16 +50,8 @@ S.groups = [];   // [{ rows: [row indexes] }] in Excel order
 S.groupOf = [];  // row index -> group index
 
 function buildGroups() {
-  const bySig = new Map();
-  S.groups = [];
-  S.groupOf = [];
-  S.rows.forEach((rw, i) => {
-    const sig = shownCols().map((c) => String(rw[c.key] ?? "").replace(/\s+/g, " ").trim()).join("\u0001");
-    let g = bySig.get(sig);
-    if (!g) { g = { i: S.groups.length, rows: [] }; bySig.set(sig, g); S.groups.push(g); }
-    g.rows.push(i);
-    S.groupOf[i] = g.i;
-  });
+  S.groups = S.rows.map((rw, i) => ({ i, rows: [i] }));
+  S.groupOf = S.rows.map((rw, i) => i);
 }
 // the row that stands for its whole group (its first row)
 const canon = (r) => { const g = S.groups[S.groupOf[r]]; return g ? g.rows[0] : r; };
@@ -195,19 +186,19 @@ function renderTable() {
     const s = String(v ?? "").replace(/\s*\n\s*/g, " ").trim();
     return `<td title="${esc(String(v ?? ""))}">${esc(s)}</td>`;
   };
-  const head = `<tr><th class="n">#</th>${cols.map((c, i) => `<th><span class="colid">${String.fromCharCode(65 + i)}</span>${esc(c.label)}</th>`).join("")}<th class="n">Rows</th><th class="st"></th></tr>`;
+  const head = `<tr><th class="n">#</th>${cols.map((c, i) => `<th><span class="colid">${String.fromCharCode(65 + i)}</span>${esc(c.label)}</th>`).join("")}<th class="st"></th></tr>`;
   const body = S.groups.map((g, gi) => {
     const r = g.rows[0], key = keyFor(r);
     const st = !key ? ["⚠", "No crystal template for this row yet"] : S.edits[r + "|" + key] ? ["✎", "Edited"] : ["", ""];
     return `<tr data-g="${gi}" class="${gi === cur ? "sel" : ""}" aria-selected="${gi === cur}">` +
       `<td class="n">${r + 1}</td>${cols.map((c) => cell(S.rows[r][c.key])).join("")}` +
-      `<td class="n">${g.rows.length > 1 ? "×" + g.rows.length : ""}</td><td class="st" title="${st[1]}">${st[0]}</td></tr>`;
+      `<td class="st" title="${st[1]}">${st[0]}</td></tr>`;
   }).join("");
   $("xlTable").innerHTML = `<table><thead>${head}</thead><tbody>${body}</tbody></table>`;
   const sel = $("xlTable").querySelector("tr.sel");
   if (sel) sel.scrollIntoView({ block: "nearest" });
   const n = S.groups.length;
-  $("rowCount").textContent = `Crystal ${cur + 1} of ${n}` + (S.rows.length !== n ? ` · ${S.rows.length} rows` : "");
+  $("rowCount").textContent = `Row ${cur + 1} of ${n}`;
   $("prevRow").disabled = cur <= 0;
   $("nextRow").disabled = cur >= n - 1;
   $("resetRow").disabled = !S.edits[S.row + "|" + S.key];

@@ -14,6 +14,7 @@ import { useFont, findFont } from "./fonts.js";
 import { fitSize } from "./measure.js";
 import { store } from "./store.js";
 import { visibleTextItems, readableText, withoutLiveText } from "./pdf.js";
+import { pagePlan, drawOnly, serial } from "./elements.js";
 
 const PDF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/g;
@@ -114,6 +115,70 @@ class CanvasFactory {
   destroy(cc) { cc.canvas.width = 0; cc.canvas.height = 0; cc.canvas = null; cc.context = null; }
 }
 
+// The artwork without its live text. Text with an outline or shadow made in Illustrator usually
+// has a copy of its letters drawn as shapes right behind it; hiding only the live letters left that
+// copy as a white "ghost" of the words. So shapes that sit inside a live text's box are left out too.
+// Returns { without: runs another drawing of this page with those shapes left out as well,
+//           ghosts: the shapes left out (their box in pt, colour, line width) }
+async function drawBare(page, textItems, c, vp) {
+  const draw = () => {
+    c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height);
+    return withoutLiveText(page, () => page.render({ canvasContext: withoutText(c.ctx), viewport: vp, background: CLEAR }).promise);
+  };
+  await draw();
+  const asIs = { without: (fn) => fn(), ghosts: [] };
+  const plan = pagePlan(page); // knows what each drawing step paints once the page was drawn
+  if (!plan) return asIs;
+  const boxes = textBoxes(page, textItems);
+  // mostly inside: a script letter's swash may reach a little outside the box
+  const inText = (it) => {
+    const a = (it.x1 - it.x0) * (it.y1 - it.y0);
+    return boxes.some((b) => {
+      const w = Math.min(it.x1, b[2]) - Math.max(it.x0, b[0]), h = Math.min(it.y1, b[3]) - Math.max(it.y0, b[1]);
+      return w > 0 && h > 0 && w * h >= 0.6 * a;
+    });
+  };
+  const ghosts = plan.items.filter(inText);
+  if (!ghosts.length) return asIs;
+  const keep = plan.items.filter((it) => !inText(it)).map((it) => it.op);
+  const without = (fn) => serial(() => drawOnly(plan, keep, fn));
+  await without(draw);
+  return { without, ghosts };
+}
+
+// The outline Illustrator drew around a text (as shapes behind it), so the editable text keeps it.
+// b: a text block in pt -> { stroke, strokeWidth, paintFirst } or {}
+function outlineOf(b, ghosts) {
+  const lines = ghosts.filter((g) => g.stroke && g.lw > 0.2 && g.x0 < b.r && g.x1 > b.l && g.y0 < b.bottom && g.y1 > b.top);
+  if (!lines.length) return {};
+  const count = {};
+  for (const g of lines) count[g.color] = (count[g.color] || 0) + 1;
+  const color = Object.keys(count).sort((p, q) => count[q] - count[p])[0];
+  const lw = Math.max(...lines.filter((g) => g.color === color).map((g) => g.lw));
+  return { stroke: color, strokeWidth: Math.round(lw * 100) / 100, paintFirst: "stroke", strokeLineJoin: "round" };
+}
+
+// each live text's box in pt from the page's top-left, with room for an outline around it
+function textBoxes(page, items) {
+  const m = page.getViewport({ scale: 1 }).transform, boxes = [];
+  for (const it of items) {
+    if (!it.str || !it.str.trim() || !it.transform) continue;
+    const t = pdfjsLib.Util.transform(m, it.transform);
+    const fh = Math.hypot(t[2], t[3]);
+    if (!(fh > 0.5)) continue;
+    // corners of the run: along the baseline (its width) and up the letters (t[2], t[3] = one font height)
+    const len = Math.hypot(t[0], t[1]) || 1, ax = (t[0] / len) * (it.width || 0), ay = (t[1] / len) * (it.width || 0);
+    const px = [], py = [];
+    for (const along of [0, 1]) for (const up of [-0.3, 1]) {
+      px.push(t[4] + ax * along + t[2] * up);
+      py.push(t[5] + ay * along + t[3] * up);
+    }
+    const pad = fh * 0.35 + 1;
+    boxes.push([Math.min(...px) - pad, Math.min(...py) - pad, Math.max(...px) + pad, Math.max(...py) + pad]);
+  }
+  return boxes;
+}
+
 function makeCanvas(w, h) {
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -159,15 +224,17 @@ async function importPdf(file, progress) {
     const hasText = tc.items.some((it) => it.str && it.str.trim());
     const bare = makeCanvas(W, H);
     factory.hideText = true;
-    await withoutLiveText(page, () => page.render({ canvasContext: withoutText(bare.ctx), viewport: vp, background: CLEAR }).promise);
+    const { without: withoutGhosts, ghosts } = await drawBare(page, tc.items, bare, vp);
     factory.hideText = false;
     const bareData = bare.ctx.getImageData(0, 0, W, H).data;
     let blocks = [];
     if (hasText) {
       const full = makeCanvas(W, H);
-      await page.render({ canvasContext: full.ctx, viewport: vp, background: CLEAR }).promise;
+      // the outline copies are left out here too, so only the live letters differ from the bare picture
+      await withoutGhosts(() => page.render({ canvasContext: full.ctx, viewport: vp, background: CLEAR }).promise);
       blocks = readTexts(tc, vp, S, page, full.ctx.getImageData(0, 0, W, H).data, bareData, W, H);
       full.canvas.width = full.canvas.height = 0;
+      for (const b of blocks) Object.assign(b, outlineOf(b, ghosts));
     }
 
     const regions = findDesigns(bareData, W, H, S, pageW, pageH);
@@ -439,6 +506,7 @@ function finishText(b, r) {
     left: (b.rotated ? b.rotLeft : ax) - r.x, top: (b.rotated ? b.rotTop : b.top) - r.y,
     originX: align, textAlign: align, angle: b.angle, fontSize: b.fontSize, fill: b.fill, charSpacing: 0,
     lineHeight: b.lineHeight, scaleX: b.scaleX, scaleY: 1, maxW: Math.max(room * 0.96, b.widest), field: null,
+    ...(b.stroke ? { stroke: b.stroke, strokeWidth: b.strokeWidth, paintFirst: b.paintFirst, strokeLineJoin: b.strokeLineJoin } : {}),
   };
 }
 
@@ -468,7 +536,8 @@ export function hiResBackground(item, dpi) {
         const k = Math.min(dpi / 72, Math.sqrt(80e6 / (w * h)));
         const vp = page.getViewport({ scale: k, offsetX: -x * k, offsetY: -y * k });
         const c = makeCanvas(Math.round(w * k), Math.round(h * k));
-        await withoutLiveText(page, () => page.render({ canvasContext: withoutText(c.ctx), viewport: vp, background: CLEAR }).promise);
+        const items = await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true }));
+        await drawBare(page, items, c, vp);
         const url = c.canvas.toDataURL("image/png");
         c.canvas.width = c.canvas.height = 0;
         return url;

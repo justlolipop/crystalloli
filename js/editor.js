@@ -132,6 +132,7 @@ export function makeText(t) {
     left: t.left, top: t.top, originX: t.originX || "left", originY: "top", textAlign: t.textAlign || "left",
     fontFamily: t.css || "Arial", fontSize: t.fontSize || 12, fontWeight: t.fontWeight || "normal", fontStyle: t.fontStyle || "normal",
     fill: t.fill || "#000000", stroke: t.stroke || null, strokeWidth: t.stroke ? t.strokeWidth || 0.2 : 0,
+    paintFirst: t.paintFirst || "fill", strokeLineJoin: t.strokeLineJoin || "miter",
     charSpacing: t.charSpacing || 0, lineHeight: t.lineHeight || 1, scaleX: t.scaleX || 1, scaleY: t.scaleY || 1, angle: t.angle || 0,
     data: {
       role: "text", field: t.field || null, ps: t.ps || null, frame: t.frame || null, src: t.src ?? null, tplText: t.tplText || null,
@@ -325,7 +326,7 @@ const identity = (o) => {
   if (d.field && d.defLeft != null) return "f:" + d.field;
   return null;
 };
-const COPY = ["left", "top", "angle", "scaleX", "scaleY", "skewX", "skewY", "flipX", "flipY", "fill", "stroke", "strokeWidth", "opacity",
+const COPY = ["left", "top", "angle", "scaleX", "scaleY", "skewX", "skewY", "flipX", "flipY", "fill", "stroke", "strokeWidth", "paintFirst", "opacity",
   "charSpacing", "lineHeight", "fontWeight", "fontStyle", "underline", "textAlign", "visible",
   "lockMovementX", "lockMovementY", "lockScalingX", "lockScalingY", "lockRotation", "hasControls", "editable"];
 
