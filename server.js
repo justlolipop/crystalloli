@@ -170,7 +170,8 @@ function designSave(body) {
   writeJson(path.join(DESIGNS_DIR, id + ".json"), { id, name, created: old.created || now, updated: now, data });
   const thumb = /^data:image\/(png|jpeg);base64,/.test(body.thumb || "") && body.thumb.length < 400000 ? body.thumb : old.thumb || "";
   writeJson(path.join(DESIGNS_DIR, id + ".meta.json"),
-    { id, name, created: old.created || now, updated: now, rows: Array.isArray(data.rows) ? data.rows.length : 0, thumb });
+    { id, name, created: old.created || now, updated: now, rows: Array.isArray(data.rows) ? data.rows.length : 0, thumb,
+      source: String(data.sourceName || "").slice(0, 200), changed: data.edits && typeof data.edits === "object" ? Object.keys(data.edits).length : 0 });
   return { id, updated: now };
 }
 

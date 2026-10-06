@@ -651,9 +651,14 @@ function markDirty() {
 }
 
 async function saveDesign() {
+  // not named yet: call it after the Excel it came from
+  if (S.design.name === "Untitled design" && S.sourceName) {
+    S.design.name = S.sourceName.replace(/\.(xlsx|xlsm|xls|csv|txt)$/i, "");
+    $("designName").value = S.design.name;
+  }
   const data = { v: 2, columns: S.columns, rows: S.rows, row: S.row, rowTpl: S.rowTpl, edits: S.edits, lastKey: S.lastKey, source: S.source, sourceName: S.sourceName, sheet: S.sheet };
   let thumb = "";
-  if (S.key) { try { thumb = editor.exportImage((72 * 360) / Math.max(1, editor.docSize().w), "jpeg"); } catch (e) {} }
+  if (S.key) { try { thumb = editor.exportImage((72 * 240) / Math.max(1, editor.docSize().w), "png"); } catch (e) {} } // png: the artboard is see-through
   $("saveBtn").disabled = true;
   try {
     const r = await store.saveDesign({ id: S.design.id, name: S.design.name, data, thumb });
@@ -682,6 +687,7 @@ async function openDesign(id) {
   $("srcHint").textContent = S.sourceName ? `${S.sourceName}${S.sheet ? " · " + S.sheet : ""} · ${S.rows.length} rows` : `${S.rows.length} rows`;
   $("saveState").textContent = "Opened";
   $("openDlg").close();
+  toast(`Opened “${d.name}”: ${S.rows.length} row${S.rows.length === 1 ? "" : "s"}${S.sourceName ? " from " + S.sourceName : ""}.`);
   await show(S.row);
 }
 
@@ -692,7 +698,8 @@ async function openDialog() {
   try { list = await store.listDesigns(); } catch (err) { $("openList").innerHTML = `<p class="bad">${esc(err.message)}</p>`; return; }
   $("openList").innerHTML = list.map((d) => `<div class="drow">
       <button class="dopen" data-open="${esc(d.id)}">${d.thumb ? `<img alt="" src="${d.thumb}">` : '<span class="nothumb"></span>'}
-        <span><b>${esc(d.name)}</b><small>${new Date(d.updated).toLocaleString()} · ${d.rows} row${d.rows === 1 ? "" : "s"}</small></span></button>
+        <span><b>${esc(d.name)}</b><small>${d.source ? "Excel: " + esc(d.source) + " · " : ""}${d.rows} row${d.rows === 1 ? "" : "s"}${d.changed ? ` · ${d.changed} changed by hand` : ""}</small>` +
+        `<small>Saved ${new Date(d.updated).toLocaleString([], { day: "numeric", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" })}</small></span></button>
       <button class="ib danger" data-deldesign="${esc(d.id)}" aria-label="Delete ${esc(d.name)}" title="Delete">×</button>
     </div>`).join("") || '<p class="hint">Nothing saved yet. Press Save (Ctrl+S) to keep a design here.</p>';
 }
