@@ -3,7 +3,8 @@
 // row's words into the design's own text frames, and saves it as a new .ai. The artwork, the
 // pattern and the cut line are never redrawn, so they stay exactly as drawn (vector).
 //
-// job = { folder, rows: [{ row, file, page, region: [x, y, w, h], name, texts: [change] }] }
+// job = { folder, outDir?, keepOpen?, rows: [{ row, file, page, region: [x, y, w, h], name, texts: [change] }] }
+// (outDir: save there without asking; keepOpen: leave the new .ai files open in Illustrator)
 // change = { orig: box, now: box } (a template text that changed), { orig, deleted: true }, or
 //          { now } (a text added in the studio). box = { text, l, t, r, b, size, fill, align, ps }
 //          in pt from the design's top-left.
@@ -23,8 +24,9 @@ var OUTLINE_TEXT = true;
 var JOB = __JOB__;
 
 (function () {
-  var outDir = Folder.selectDialog("Crystal Studio: choose a folder for the finished .ai files");
+  var outDir = JOB.outDir ? new Folder(String(JOB.outDir).replace(/\\/g, "/")) : Folder.selectDialog("Crystal Studio: choose a folder for the finished .ai files");
   if (!outDir) return;
+  if (!outDir.exists) outDir.create();
   var level = app.userInteractionLevel;
   app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
   var opened = {}, done = 0, notes = [];
@@ -147,7 +149,7 @@ var JOB = __JOB__;
     if (OUTLINE_TEXT) for (i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].createOutline(); } catch (e) {} }
     var out = new File(outDir.fsName + "/" + pad(r.row) + " - " + safe(r.name) + ".ai");
     doc.saveAs(out, new IllustratorSaveOptions());
-    doc.close(SaveOptions.DONOTSAVECHANGES);
+    if (!JOB.keepOpen) doc.close(SaveOptions.DONOTSAVECHANGES);
   }
 
   function addText(doc, b, L, T) {

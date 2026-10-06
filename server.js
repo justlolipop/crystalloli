@@ -20,6 +20,8 @@ import fs from 'fs';
 import path from 'path';
 import http from 'http';
 import { fileURLToPath } from 'url';
+import { spawn } from 'child_process';
+import { illustratorScript } from './js/illustrator.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -32,6 +34,7 @@ const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, "studio.config.json");
 const DESIGNS_DIR = path.join(APP_DIR, "designs");
 const LIBRARY_DIR = path.join(APP_DIR, "library");
+const OUTPUT_DIR = path.join(APP_DIR, "output"); // .ai files made in Illustrator, one folder per run
 for (const d of [DESIGNS_DIR, LIBRARY_DIR]) fs.mkdirSync(d, { recursive: true });
 
 const ID_RE = /^[a-z0-9][a-z0-9-]{3,40}$/;
@@ -213,6 +216,46 @@ function sendFile(res, baseDir, rel) {
   fs.createReadStream(full).pipe(res);
 }
 
+// ---------------------------------------------------------------- Illustrator
+
+// Illustrator on this PC: "illustratorPath" in studio.config.json, or the newest one installed
+function illustratorExe() {
+  const set = readJson(CONFIG_FILE, {}).illustratorPath;
+  if (set && fs.existsSync(set)) return set;
+  const year = (d) => +((/\d{4}/.exec(d) || [0])[0]);
+  for (const root of [process.env.ProgramFiles, process.env["ProgramFiles(x86)"]].filter(Boolean)) {
+    let dirs = [];
+    try { dirs = fs.readdirSync(path.join(root, "Adobe")).filter((d) => /^Adobe Illustrator/i.test(d)); } catch (e) {}
+    for (const d of dirs.sort((a, b) => year(b) - year(a))) {
+      const exe = path.join(root, "Adobe", d, "Support Files", "Contents", "Windows", "Illustrator.exe");
+      if (fs.existsSync(exe)) return exe;
+    }
+  }
+  return null;
+}
+
+// Opens Illustrator with the studio's script, which makes one .ai per row from the original
+// templates. The page only sends the rows' words and places; the script itself is this
+// program's own, and the templates come from the template folder set here.
+function runInIllustrator(body) {
+  const rows = Array.isArray(body.rows) ? body.rows : [];
+  if (!rows.length) return { ok: false, error: "Nothing to make." };
+  if (rows.some((r) => !r || typeof r.file !== "string" || !TEMPLATE_EXT.test(r.file) || /[\\/]/.test(r.file))) {
+    return { ok: false, error: "Bad template name." };
+  }
+  const d = new Date(), two = (n) => String(n).padStart(2, "0"); // this PC's own clock
+  const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}`;
+  const outDir = path.join(OUTPUT_DIR, stamp);
+  fs.mkdirSync(outDir, { recursive: true });
+  const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, rows };
+  const jsx = path.join(outDir, "_make.jsx");
+  fs.writeFileSync(jsx, illustratorScript(job));
+  const exe = illustratorExe();
+  if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC.", folder: outDir };
+  spawn(exe, [jsx], { detached: true, stdio: "ignore" }).unref();
+  return { ok: true, folder: outDir };
+}
+
 // Handler function for native HTTP requests
 async function handleNativeRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
@@ -221,6 +264,13 @@ async function handleNativeRequest(req, res) {
   const m = req.method;
   try {
     if (p === "/api/fonts" && m === "GET") return send(res, 200, readJson(config().fontsFile, []));
+
+    if (p === "/api/illustrator" && m === "POST") {
+      // only this studio's own page may start Illustrator (not another website open in the browser)
+      const o = req.headers.origin;
+      if (o && !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return send(res, 403, { error: "Not allowed" });
+      return send(res, 200, runInIllustrator(await readBody(req)));
+    }
 
     if (p === "/api/folder") {
       if (m === "GET") return send(res, 200, folderList());

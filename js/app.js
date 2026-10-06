@@ -608,6 +608,13 @@ async function doExport(kind) {
       toast("Making the Illustrator script…");
       const job = await illustratorJob(kind === "ai-all");
       if (!job.rows.length) return toast("These rows' designs aren't from an .ai / .pdf file, so there's nothing to open in Illustrator.", "bad");
+      // server.js opens Illustrator and runs it; the .ai files are saved in the studio's output folder
+      const r = await fetch("/api/illustrator", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(job) })
+        .then((x) => x.json()).catch(() => ({}));
+      if (r.ok) {
+        toast(`Opening Illustrator… ${job.rows.length <= 5 ? "The .ai file" + (job.rows.length > 1 ? "s" : "") + " will open there" : "The .ai files are being made"} (saved in ${r.folder}).`);
+        return;
+      }
       const file = safeName(S.design.name) + (kind === "ai-all" ? " - every row" : ` - row ${S.row + 1}`) + ".jsx";
       downloadBlob(new Blob([illustratorScript(job)], { type: "text/plain" }), file);
       toast("In Illustrator: File › Scripts › Other Script… and pick the .jsx — it makes one vector .ai per row.");
