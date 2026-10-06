@@ -144,6 +144,8 @@ async function show(r, key) {
   const saved = S.edits[S.row + "|" + key];
   const ok = saved ? await editor.loadState(saved, scene.images) : await editor.build(scene);
   if (!ok || token !== showToken) return;
+  // the picture shown first is a quick preview; swap in the print-quality one (also used for downloads)
+  hiResBackground(it, PRINT_DPI).then((url) => { if (url && token === showToken) editor.sharpenBackground(url); });
   
   renderAll();
 }

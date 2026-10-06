@@ -165,6 +165,19 @@ async function addSceneTo(canvas, scene, alive = () => true) {
   return alive();
 }
 
+// the same template picture drawn sharper (it keeps its size on the design) — not an edit
+export async function sharpenBackground(src) {
+  const o = cv.getObjects().find((x) => x.data && x.data.role === "bg");
+  if (!o) return false;
+  const w = o.getScaledWidth(), h = o.getScaledHeight();
+  const img = await loadImage(src);
+  if (!img || !cv.getObjects().includes(o)) return false;
+  o.setElement(img.getElement());
+  o.set({ scaleX: w / o.width, scaleY: h / o.height });
+  cv.requestRenderAll();
+  return true;
+}
+
 // background picked again (e.g. BACKGROUND_2 or another colour): swap the pictures, keep the edits
 export async function setTemplateImages(images) {
   ed.quiet++;
