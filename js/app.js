@@ -3,7 +3,7 @@
 //   Canvas (middle)   the design for the current row, edited Canva-style
 //   Templates (below) your crystal .ai files, and the designs inside each one
 
-import { $, esc, debounce, toast, safeName, downloadBlob, downloadDataUrl } from "./util.js";
+import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground } from "./library.js";
@@ -293,7 +293,7 @@ $("sources").addEventListener("click", (e) => {
 
 async function deleteFile(file) {
   const items = S.library.filter((x) => x.file === file);
-  if (!items.length || !confirm(`Remove “${file}” (${items.length} design${items.length === 1 ? "" : "s"}) from the studio? Your .ai file isn't touched.`)) return;
+  if (!items.length || !await ask(`Remove “${file}” (${items.length} design${items.length === 1 ? "" : "s"}) from the studio? Your .ai file isn't touched.`)) return;
   for (const it of items) {
     try { await store.deleteLibrary(it.id); } catch (err) { return toast(err.message, "bad"); }
     S.library = S.library.filter((x) => x.id !== it.id);
@@ -311,18 +311,44 @@ function onBound(o, field) {
   saveLibrarySoon(it);
 }
 
+// Copy the Excel column links from a file's old designs onto the same texts in its new import
+// (same design in the file, same words — or the same place when the words changed). -> links kept
+function keepLinks(tpls, old) {
+  let n = 0;
+  for (const t of tpls) {
+    const prev = old.filter((o) => (o.order || 0) === (t.order || 0) && o.texts);
+    const linked = prev.flatMap((o) => o.texts.filter((x) => x.field));
+    for (const x of t.texts || []) {
+      if (x.field) continue;
+      const same = linked.find((o) => o.text.trim() === String(x.text).trim()) ||
+        linked.find((o) => Math.abs(o.left - x.left) < 4 && Math.abs(o.top - x.top) < 4);
+      if (same) { x.field = same.field; n++; }
+    }
+  }
+  return n;
+}
+
 async function importFiles(files) {
   const bad = [];
   let first = null;
   for (const f of files) {
     try {
       const tpls = await importFile(f, (m) => toast(m));
+      // importing a file again replaces its old designs, keeping the texts' Excel column links
+      const old = S.library.filter((x) => x.file === f.name);
+      const kept = keepLinks(tpls, old);
       for (const t of tpls) {
         const saved = await store.saveLibrary(t);
         S.library.push(saved);
         if (!first) first = saved;
       }
-      toast(`${f.name}: ${tpls.length} design${tpls.length === 1 ? "" : "s"} found.`);
+      for (const it of old) {
+        await store.deleteLibrary(it.id).catch(() => {});
+        S.library = S.library.filter((x) => x.id !== it.id);
+        for (const k of Object.keys(S.edits)) if (k.endsWith("|lib|" + it.id)) delete S.edits[k];
+      }
+      toast(`${f.name}: ${tpls.length} design${tpls.length === 1 ? "" : "s"} found` +
+        (old.length ? ` — replaced the old copy${kept ? `, kept ${kept} column link${kept === 1 ? "" : "s"}` : ""}.` : "."));
     } catch (err) {
       bad.push(`${f.name}: ${err.message}`);
     }
@@ -405,7 +431,7 @@ $("prevRow").onclick = () => stepGroup(-1);
 $("nextRow").onclick = () => stepGroup(1);
 $("resetRow").onclick = async () => {
   if (!S.edits[S.row + "|" + S.key]) return;
-  if (!confirm("Throw away your changes on this row and go back to the template's design?")) return;
+  if (!await ask("Throw away your changes on this row and go back to the template's design?")) return;
   delete S.edits[S.row + "|" + S.key];
   markDirty();
   await show(S.row, S.key);
@@ -416,7 +442,7 @@ $("applyAll").onclick = async () => {
   const others = [];
   for (const g of S.groups) if (g.rows[0] !== S.row && keyFor(g.rows[0]) === S.key) others.push(g.rows[0]);
   if (!others.length) return toast("No other crystal uses this design.");
-  if (!confirm(`Copy this crystal's positions, fonts and extra elements to ${others.length} other crystal${others.length === 1 ? "" : "s"} with the same design? (Each keeps its own text.)`)) return;
+  if (!await ask(`Copy this crystal's positions, fonts and extra elements to ${others.length} other crystal${others.length === 1 ? "" : "s"} with the same design? (Each keeps its own text.)`)) return;
   for (const r of others) {
     const sc = await sceneFor(S.key, r);
     if (sc) S.edits[r + "|" + S.key] = await editor.layoutLike(sc);
@@ -432,7 +458,7 @@ $("excelFile").addEventListener("change", async (e) => {
   const f = e.target.files[0];
   e.target.value = "";
   if (!f) return;
-  if (Object.keys(S.edits).length && !confirm("Load a new Excel file? Changes made on the current rows will be cleared.")) return;
+  if (Object.keys(S.edits).length && !await ask("Load a new Excel file? Changes made on the current rows will be cleared.")) return;
   try {
     S.wb = await readWorkbook(f);
   } catch (err) {
@@ -626,11 +652,11 @@ async function openDialog() {
 $("openList").addEventListener("click", async (e) => {
   const o = e.target.closest("[data-open]");
   if (o) {
-    if (S.dirty && !confirm("Open another design? Unsaved changes here will be lost.")) return;
+    if (S.dirty && !await ask("Open another design? Unsaved changes here will be lost.")) return;
     return openDesign(o.dataset.open);
   }
   const del = e.target.closest("[data-deldesign]");
-  if (del && confirm("Delete this saved design? This can't be undone.")) {
+  if (del && await ask("Delete this saved design? This can't be undone.")) {
     try { await store.deleteDesign(del.dataset.deldesign); } catch (err) { return toast(err.message, "bad"); }
     if (S.design.id === del.dataset.deldesign) S.design.id = null;
     openDialog();
@@ -641,7 +667,7 @@ $("saveBtn").onclick = saveDesign;
 $("openBtn").onclick = openDialog;
 $("openClose").onclick = () => $("openDlg").close();
 $("newBtn").onclick = async () => {
-  if (S.dirty && !confirm("Start a new design? Unsaved changes will be lost.")) return;
+  if (S.dirty && !await ask("Start a new design? Unsaved changes will be lost.")) return;
   Object.assign(S, { columns: SAMPLE_COLUMNS, rows: sampleRows(), row: 0, rowTpl: {}, edits: {}, lastKey: null, sourceName: "", sheet: "", wb: null, design: { id: null, name: "Untitled design" }, dirty: false });
   buildGroups();
   $("designName").value = S.design.name;
