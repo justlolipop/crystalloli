@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue } from "./library.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
@@ -239,7 +239,7 @@ function onSelection(list) {
 
 async function addField(field, at) {
   const col = S.columns.find((c) => c.key === field);
-  const text = String(row()[field] || "").trim() || (col ? col.label : field);
+  const text = fieldValue(row(), field).trim() || (col ? col.label : field);
   // look like the rest of the design: same font and colour as its first text
   const ref = editor.objects().find((o) => editor.isText(o));
   await editor.addText(text, {
@@ -334,6 +334,20 @@ function keepLinks(tpls, old) {
   return n;
 }
 
+// A new design whose 3 texts aren't linked yet: link them like the master order Excel, top to
+// bottom — the event's header, the award (position), the name (event_line_1) -> designs linked
+const MASTER = ["event_header", "position", "event_line_1"];
+function autoLink(tpls) {
+  let n = 0;
+  for (const t of tpls) {
+    const texts = t.texts || [];
+    if (texts.length !== MASTER.length || texts.some((x) => x.field || x.angle)) continue;
+    [...texts].sort((a, b) => a.top - b.top).forEach((x, i) => { x.field = MASTER[i]; });
+    n++;
+  }
+  return n;
+}
+
 async function importFiles(files) {
   const bad = [];
   let first = null;
@@ -343,6 +357,7 @@ async function importFiles(files) {
       // importing a file again replaces its old designs, keeping the texts' Excel column links
       const old = S.library.filter((x) => x.file === f.name);
       const kept = keepLinks(tpls, old);
+      const linked = autoLink(tpls);
       for (const t of tpls) {
         const saved = await store.saveLibrary(t);
         S.library.push(saved);
@@ -354,7 +369,8 @@ async function importFiles(files) {
         for (const k of Object.keys(S.edits)) if (k.endsWith("|lib|" + it.id)) delete S.edits[k];
       }
       toast(`${f.name}: ${tpls.length} design${tpls.length === 1 ? "" : "s"} found` +
-        (old.length ? ` — replaced the old copy${kept ? `, kept ${kept} column link${kept === 1 ? "" : "s"}` : ""}.` : "."));
+        (old.length ? ` — replaced the old copy${kept ? `, kept ${kept} column link${kept === 1 ? "" : "s"}` : ""}.` : ".") +
+        (linked ? ` Header, position and name fill from the Excel by themselves.` : ""));
     } catch (err) {
       bad.push(`${f.name}: ${err.message}`);
     }
@@ -501,7 +517,7 @@ async function loadSheet(name) {
 function resyncRow() {
   for (const o of editor.objects()) {
     const d = o.data || {};
-    if (editor.isText(o) && d.field && !d.tplText) for (const r of groupRows(S.row)) S.rows[r][d.field] = o.text;
+    if (editor.isText(o) && d.field && !d.tplText) for (const r of groupRows(S.row)) setFieldValue(S.rows[r], d.field, o.text);
   }
   renderElements();
 }
@@ -518,12 +534,12 @@ editor.initEditor({
   textChanged: (o) => {
     const d = o.data || {};
     if (!d.field || d.tplText) return;
-    for (const r of groupRows(S.row)) S.rows[r][d.field] = o.text;
+    for (const r of groupRows(S.row)) setFieldValue(S.rows[r], d.field, o.text);
     renderElementsSoon();
   },
   selection: onSelection,
   columns: columnsForUi,
-  valueOf: (f) => String(row()[f] || ""),
+  valueOf: (f) => fieldValue(row(), f),
   bound: onBound,
   dropField: (f, p) => { if (S.key) addField(f, p); },
   save: () => saveDesign(),

@@ -39,6 +39,30 @@ export function fillPlaceholders(text, row, columns) {
   });
 }
 
+// ------------------------------------------------------------------ the name paragraph
+
+// The name text (event_line_1) also carries the row's event_line_2 and event_line_3, as more lines
+// in the same font, so a design needs no extra text for them.
+const MORE_LINES = ["event_line_2", "event_line_3"];
+const filled = (v) => v != null && String(v).trim() !== "";
+
+// what a text linked to this column shows for this row
+export function fieldValue(row, field) {
+  if (!row || !field) return "";
+  if (field !== "event_line_1") return filled(row[field]) ? String(row[field]) : "";
+  return ["event_line_1", ...MORE_LINES].filter((f) => filled(row[f])).map((f) => String(row[f])).join("\n");
+}
+
+// a text linked to this column was typed in: put its words back in the row's cells
+export function setFieldValue(row, field, text) {
+  if (field !== "event_line_1") { row[field] = text; return; }
+  const more = MORE_LINES.filter((f) => filled(row[f]));
+  const lines = String(text).split("\n");
+  const keep = Math.max(1, lines.length - more.length);
+  row.event_line_1 = lines.slice(0, keep).join("\n");
+  more.forEach((f, i) => { row[f] = lines[keep + i] || ""; });
+}
+
 // ------------------------------------------------------------------ scene for one Excel row
 
 export async function libraryScene(item, row, columns) {
@@ -59,14 +83,17 @@ export async function libraryScene(item, row, columns) {
     const css = t.ps ? await useFont(t.ps, t.family, t.style) : t.family ? `"${t.family}", sans-serif` : "Arial";
     const hasPh = /\{\{[^{}]+\}\}/.test(t.text);
     const field = t.field || fieldFromText(t.text, columns);
-    let text = t.text;
+    let text = t.text, top = t.top;
     if (hasPh) text = fillPlaceholders(t.text, row, columns);
-    else if (field && row[field] != null && String(row[field]).trim()) text = String(row[field]);
+    else if (fieldValue(row, field).trim()) text = fieldValue(row, field);
     if (!String(text).trim()) continue;
     const size = text === t.text ? t.fontSize : fitSize(text, css, t.fontSize, t.charSpacing, t.scaleX, t.maxW, 4);
+    // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
+    const extra = field === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
+    if (extra > 0) top -= (extra * size * (t.lineHeight || 1) * 1.13) / 2;
     const real = css.startsWith("ps_");
     texts.push({
-      ...t, text, css, field, fontSize: size, src: i, tplText: hasPh ? t.text : null,
+      ...t, text, top, css, field, fontSize: size, src: i, tplText: hasPh ? t.text : null,
       fontWeight: !real && t.bold ? "bold" : "normal", fontStyle: !real && t.italic ? "italic" : "normal",
     });
   }
@@ -291,6 +318,41 @@ function findDesigns(data, W, H, S, pageW, pageH) {
     const row = ((y / g) | 0) * gw, base = y * W * 4;
     for (let x = 0; x < W; x++) if (data[base + x * 4 + 3] > 24) ink[row + ((x / g) | 0)] = 1;
   }
+  const found = designsIn(ink, g, gw, gh, S, pageW, pageH);
+  if (found.length) return found;
+  // Designs drawn inside one thin frame (a box around them all, a line between them) touch each
+  // other, so they're one shape. Use the boxes between the frame's lines instead.
+  return frameCells(data, W, H, S, pageW, pageH);
+}
+
+// The cells of a frame drawn as long dark lines across the artboard: each cell (pt, in reading
+// order, lines included) with artwork in it, or [] when the lines don't make two or more cells
+function frameCells(data, W, H, S, pageW, pageH) {
+  const dark = (i) => data[i + 3] > 128 && data[i] + data[i + 1] + data[i + 2] < 240;
+  const lines = (n, len, at) => {
+    const out = [];
+    for (let k = 0; k < n; k++) {
+      let c = 0;
+      for (let j = 0; j < len; j++) if (dark(at(k, j))) c++;
+      if (c < len * 0.5) continue;
+      const last = out[out.length - 1];
+      if (last && k - last[1] <= 1) last[1] = k; else out.push([k, k]);
+    }
+    return out.filter(([a, b]) => b - a <= 6 * S); // lines, not filled areas
+  };
+  const xs = lines(W, H, (x, y) => (y * W + x) * 4), ys = lines(H, W, (y, x) => (y * W + x) * 4);
+  const cells = [];
+  for (let j = 0; j + 1 < ys.length; j++) {
+    for (let i = 0; i + 1 < xs.length; i++) {
+      const x = xs[i][0] / S, y = ys[j][0] / S, w = (xs[i + 1][1] + 1) / S - x, h = (ys[j + 1][1] + 1) / S - y;
+      if (w >= pageW * 0.15 && h >= pageH * 0.15) cells.push({ x, y, w, h });
+    }
+  }
+  return cells.length >= 2 ? cells : [];
+}
+
+// separate designs on an artboard: boxes (pt) in reading order, or [] when there aren't two or more
+function designsIn(ink, g, gw, gh, S, pageW, pageH) {
   const rad = Math.max(1, Math.round((4 * S) / g));
   const grown = new Uint8Array(gw * gh), tmp = new Uint8Array(gw * gh);
   for (let y = 0; y < gh; y++) {
@@ -417,9 +479,13 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
     const key = `${str}|${Math.round(t[4])}|${Math.round(t[5])}|${Math.round(fh)}`;
     if (seen.has(key)) continue;
     seen.add(key);
+    // mirrored text (flipped left-right, as on a design printed on the back of a crystal): its
+    // letters run right to left from where it starts. Read it as plain text flipped, not as text
+    // turned upside down
+    const w = it.width * S, mirror = t[0] * t[3] - t[1] * t[2] > 0 && Math.abs(t[1]) < 0.01 * fh;
     runs.push({
-      str, x: t[4], y: t[5], w: it.width * S, fh, font: it.fontName, ps, bold, italic,
-      hs: Math.hypot(t[0], t[1]) / fh, angle: Math.atan2(t[1], t[0]) * 180 / Math.PI,
+      str, x: mirror ? t[4] - w : t[4], y: t[5], w, fh, font: it.fontName, ps, bold, italic, mirror,
+      hs: Math.hypot(t[0], t[1]) / fh, angle: mirror ? 0 : Math.atan2(t[1], t[0]) * 180 / Math.PI,
     });
   }
 
@@ -430,7 +496,7 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
   const lines = [];
   for (const r of sorted) {
     const rotated = Math.abs(r.angle) > 0.5;
-    const ln = rotated ? null : lines.find((l) => !l.rotated && Math.abs(l.fh - r.fh) < Math.max(0.6, r.fh * 0.15) &&
+    const ln = rotated ? null : lines.find((l) => !l.rotated && l.mirror === r.mirror && Math.abs(l.fh - r.fh) < Math.max(0.6, r.fh * 0.15) &&
       Math.abs(l.y - r.y) < r.fh * 0.35 && r.x - l.end < r.fh * 1.2 && r.x + r.w > l.start - r.fh * 0.6);
     if (ln) {
       ln.parts.push(r);
@@ -439,17 +505,18 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
     } else lines.push({ ...r, rotated, parts: [r], start: r.x, end: r.x + r.w });
   }
   for (const l of lines) {
-    const parts = l.parts.sort((a, b) => a.x - b.x);
-    let str = "", end = null;
+    // in reading order: left to right, or right to left for mirrored text
+    const parts = l.parts.sort((a, b) => (l.mirror ? b.x + b.w - (a.x + a.w) : a.x - b.x));
+    let str = "", edge = null;
     for (const p of parts) {
-      const gap = end === null ? 0 : p.x - end;
-      if (end !== null && gap > p.fh * 0.12 && !/\s$/.test(str) && !/^\s/.test(p.str)) str += " ";
+      const gap = edge === null ? 0 : l.mirror ? edge - (p.x + p.w) : p.x - edge;
+      if (edge !== null && gap > p.fh * 0.12 && !/\s$/.test(str) && !/^\s/.test(p.str)) str += " ";
       str += p.str;
-      end = Math.max(end ?? -Infinity, p.x + p.w);
+      edge = l.mirror ? Math.min(edge ?? Infinity, p.x) : Math.max(edge ?? -Infinity, p.x + p.w);
     }
     const x0 = Math.min(...parts.map((p) => p.x));
     l.x = x0;
-    l.w = end - x0;
+    l.w = Math.max(...parts.map((p) => p.x + p.w)) - x0;
     l.str = str.replace(/\s+/g, " ").trim();
     // the font the most letters use
     const count = {};
@@ -470,14 +537,14 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
     const b = ln.rotated ? null : blocks.find((b) => {
       const last = b.lines[b.lines.length - 1];
       const dy = ln.y - last.y;
-      if (b.rotated || b.font !== ln.font || Math.abs(b.fh - ln.fh) > 0.6 || b.color !== ln.color) return false;
+      if (b.rotated || b.mirror !== ln.mirror || b.font !== ln.font || Math.abs(b.fh - ln.fh) > 0.6 || b.color !== ln.color) return false;
       if (dy < ln.fh * 0.8 || dy > ln.fh * 1.9) return false;
       if (b.lines.length > 1 && Math.abs(dy - b.gap) > ln.fh * 0.25) return false;
       const tol = ln.fh * 0.6;
       return Math.abs(last.x + last.w / 2 - cx) < tol || Math.abs(last.x - ln.x) < tol || Math.abs(last.x + last.w - (ln.x + ln.w)) < tol;
     });
     if (b) { b.gap = ln.y - b.lines[b.lines.length - 1].y; b.lines.push(ln); }
-    else blocks.push({ font: ln.font, fh: ln.fh, color: ln.color, rotated: ln.rotated, lines: [ln], gap: 0 });
+    else blocks.push({ font: ln.font, fh: ln.fh, color: ln.color, rotated: ln.rotated, mirror: ln.mirror, lines: [ln], gap: 0 });
   }
 
   return blocks.map((b) => {
@@ -496,7 +563,7 @@ function readTexts(tc, vp, S, page, fullData, bareData, W, H) {
       l: Math.min(...lefts), r: Math.max(...rights), top: (first.y - BASELINE * b.fh) / S, bottom: (last.y + 0.25 * b.fh) / S,
       cxLines: centres.reduce((a, c) => a + c, 0) / centres.length, widest: Math.max(...rights.map((r, i) => r - lefts[i])),
       fontSize: Math.round(size * 100) / 100, fill: b.color, lineHeight: b.lines.length > 1 ? b.gap / (b.fh * 1.13) : 1,
-      scaleX: Math.round(first.hs * 1000) / 1000 || 1, rotated: b.rotated, angle: b.rotated ? first.angle : 0,
+      scaleX: Math.round(first.hs * 1000) / 1000 || 1, rotated: b.rotated, angle: b.rotated ? first.angle : 0, mirror: b.mirror,
     };
     out.cx = (out.l + out.r) / 2;
     out.cy = (out.top + out.bottom) / 2;
@@ -520,7 +587,9 @@ function finishText(b, r) {
   return {
     text: b.text, ps: b.ps, family: "", bold: b.bold, italic: b.italic,
     left: (b.rotated ? b.rotLeft : ax) - r.x, top: (b.rotated ? b.rotTop : b.top) - r.y,
-    originX: align, textAlign: align, angle: b.angle, fontSize: b.fontSize, fill: b.fill, charSpacing: 0,
+    // flipped text keeps its place on the artboard; its lines line up on the other side of the
+    // (unflipped) text, so left and right swap
+    originX: align, textAlign: b.mirror ? { left: "right", right: "left" }[align] || align : align, flipX: !!b.mirror, angle: b.angle, fontSize: b.fontSize, fill: b.fill, charSpacing: 0,
     lineHeight: b.lineHeight, scaleX: b.scaleX, scaleY: 1, maxW: Math.max(room * 0.96, b.widest), field: null,
     ...(b.stroke ? { stroke: b.stroke, strokeWidth: b.strokeWidth, paintFirst: b.paintFirst || "fill", strokeLineJoin: b.strokeLineJoin } : {}),
     ...(b.outerStroke ? { outerStroke: b.outerStroke, outerStrokeWidth: b.outerStrokeWidth } : {}),
