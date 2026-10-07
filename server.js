@@ -170,7 +170,8 @@ function designSave(body) {
   writeJson(path.join(DESIGNS_DIR, id + ".json"), { id, name, created: old.created || now, updated: now, data });
   const thumb = /^data:image\/(png|jpeg);base64,/.test(body.thumb || "") && body.thumb.length < 400000 ? body.thumb : old.thumb || "";
   writeJson(path.join(DESIGNS_DIR, id + ".meta.json"),
-    { id, name, created: old.created || now, updated: now, rows: Array.isArray(data.rows) ? data.rows.length : 0, thumb });
+    { id, name, created: old.created || now, updated: now, rows: Array.isArray(data.rows) ? data.rows.length : 0, thumb,
+      source: String(data.sourceName || "").slice(0, 200), changed: data.edits && typeof data.edits === "object" ? Object.keys(data.edits).length : 0 });
   return { id, updated: now };
 }
 
@@ -247,6 +248,22 @@ function runInIllustrator(body) {
   const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}`;
   const outDir = path.join(OUTPUT_DIR, stamp);
   fs.mkdirSync(outDir, { recursive: true });
+  // open the exact .ai each design was imported from (the studio keeps a copy of it), not a file
+  // of the same name in the template folder, which may be a different version
+  const copies = new Map();
+  for (const r of rows) {
+    const orig = typeof r.original === "string" && /^library\/orig-[a-z0-9-]+\.pdf$/.test(r.original) ? path.join(APP_DIR, r.original) : null;
+    delete r.path;
+    if (!orig || !fs.existsSync(orig)) continue;
+    if (!copies.has(orig)) {
+      const dir = path.join(outDir, "_templates");
+      fs.mkdirSync(dir, { recursive: true });
+      const dest = path.join(dir, path.basename(orig, ".pdf").replace(/^orig-/, "") + " - " + r.file.replace(/\.(pdf|svg)$/i, ".ai"));
+      fs.copyFileSync(orig, dest);
+      copies.set(orig, dest);
+    }
+    r.path = copies.get(orig);
+  }
   const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, rows };
   const jsx = path.join(outDir, "_make.jsx");
   fs.writeFileSync(jsx, illustratorScript(job));

@@ -3,7 +3,8 @@
 // row's words into the design's own text frames, and saves it as a new .ai. The artwork, the
 // pattern and the cut line are never redrawn, so they stay exactly as drawn (vector).
 //
-// job = { folder, outDir?, keepOpen?, rows: [{ row, file, page, region: [x, y, w, h], name, texts: [change] }] }
+// job = { folder, outDir?, keepOpen?, rows: [{ row, file, path?, page, region: [x, y, w, h], name, texts: [change] }] }
+// (path: the exact .ai the studio imported this design from; else file is looked for in folder)
 // (outDir: save there without asking; keepOpen: leave the new .ai files open in Illustrator)
 // change = { orig: box, now: box } (a template text that changed), { orig, deleted: true }, or
 //          { now } (a text added in the studio). box = { text, l, t, r, b, size, fill, align, ps }
@@ -27,8 +28,9 @@ var JOB = __JOB__;
   var outDir = JOB.outDir ? new Folder(String(JOB.outDir).replace(/\\/g, "/")) : Folder.selectDialog("Crystal Studio: choose a folder for the finished .ai files");
   if (!outDir) return;
   if (!outDir.exists) outDir.create();
-  var level = app.userInteractionLevel;
+  var level = app.userInteractionLevel, coords = app.coordinateSystem;
   app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
+  app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM; // artboards and artwork in one system
   var opened = {}, done = 0, notes = [];
   var base = String(JOB.folder || "").replace(/\\/g, "/");
 
@@ -36,17 +38,19 @@ var JOB = __JOB__;
   function pad(n) { n = String(n); while (n.length < 3) n = "0" + n; return n; }
   function safe(s) { return String(s || "design").replace(/[\\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").replace(/^\s+|\s+$/g, ""); }
 
-  function source(file) {
-    if (opened[file]) return opened[file];
-    var f = new File(base + "/" + file);
+  function source(r) {
+    var file = r.file, key = r.path || file;
+    if (opened[key]) return opened[key];
+    var f = r.path ? new File(String(r.path).replace(/\\/g, "/")) : null;
+    if (!f || !f.exists) f = new File(base + "/" + file);
     if (!f.exists) {
       app.userInteractionLevel = level;
       f = File.openDialog("Crystal Studio: where is " + file + "?");
       app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
       if (!f) return null;
     }
-    opened[file] = app.open(f);
-    return opened[file];
+    opened[key] = app.open(f);
+    return opened[key];
   }
 
   // at least half of the item lies inside the design's box (Illustrator's y goes up)
@@ -57,13 +61,16 @@ var JOB = __JOB__;
     return w * h >= 0.5 * area;
   }
 
+  var moved = null; // an item copied into the new document: where it was, and its copy
+
   function copyLayer(from, to, L, T, R, B) {
     from.locked = false;
     for (var k = 0; k < from.pageItems.length; k++) {
       var it = from.pageItems[k];
       if (it.hidden || !inside(it.visibleBounds, L, T, R, B)) continue;
       try { it.locked = false; } catch (e) {}
-      it.duplicate(to, ElementPlacement.PLACEATEND);
+      var copy = it.duplicate(to, ElementPlacement.PLACEATEND);
+      if (!moved) moved = { was: it.visibleBounds, copy: copy };
     }
     for (var s = from.layers.length - 1; s >= 0; s--) {
       var sub = from.layers[s];
@@ -103,13 +110,13 @@ var JOB = __JOB__;
   }
 
   function makeRow(r) {
-    var src = source(r.file);
+    var src = source(r);
     if (!src) throw new Error("couldn't find " + r.file);
     var ab = src.artboards[(r.page || 1) - 1].artboardRect; // [left, top, right, bottom]
     var L = ab[0] + r.region[0], T = ab[1] - r.region[1], R = L + r.region[2], B = T - r.region[3];
     var doc = app.documents.add(src.documentColorSpace, r.region[2], r.region[3]);
-    doc.artboards[0].artboardRect = [L, T, R, B];
     var first = doc.layers[0];
+    moved = null;
     for (var li = src.layers.length - 1; li >= 0; li--) {
       var sl = src.layers[li];
       if (!sl.visible) continue;
@@ -118,6 +125,13 @@ var JOB = __JOB__;
       copyLayer(sl, dl, L, T, R, B);
     }
     if (first.pageItems.length === 0 && first.layers.length === 0 && doc.layers.length > 1) first.remove();
+    // a new document measures from its own origin, so the copies may land somewhere else on its
+    // canvas: put the artboard (and the box texts are looked for in) where the design landed
+    if (moved) {
+      var now = moved.copy.visibleBounds, dx = now[0] - moved.was[0], dy = now[1] - moved.was[1];
+      L += dx; R += dx; T += dy; B += dy;
+    }
+    doc.artboards[0].artboardRect = [L, T, R, B];
 
     var frames = [], i;
     for (i = 0; i < doc.textFrames.length; i++) {
@@ -168,6 +182,7 @@ var JOB = __JOB__;
   }
   for (var f in opened) { try { opened[f].close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} }
   app.userInteractionLevel = level;
+  app.coordinateSystem = coords;
   alert("Crystal Studio: " + done + " .ai file(s) saved in\n" + outDir.fsName + (notes.length ? "\n\n" + notes.join("\n") : ""));
 })();
 `;

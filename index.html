@@ -150,9 +150,13 @@
         <p class="hint" style="margin:10px 0 4px">Excel columns (drag onto a text to link it)</p>
         <div class="chips" id="chips"></div>
       </aside>
-      <div id="stageWrap">
-        <div id="stageEmpty" class="stage-empty"></div>
-        <canvas id="c" width="600" height="400"></canvas>
+      <div class="stagebox">
+        <div id="stageWrap">
+          <div id="stageEmpty" class="stage-empty"></div>
+          <canvas id="c" width="600" height="400"></canvas>
+        </div>
+        <button class="stagenav prev" id="stagePrev" aria-label="Previous row" title="Previous row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M14.5 5.5 8 12l6.5 6.5"/></svg></button>
+        <button class="stagenav next" id="stageNext" aria-label="Next row" title="Next row"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9.5 5.5 16 12l-6.5 6.5"/></svg></button>
       </div>
     </div>
     <p class="hint tips">Double-click text to edit · drag a chip onto a text to fill it from the Excel · arrows nudge (Shift = 10) · Ctrl+Z undo · Ctrl+D duplicate · Del delete · Ctrl+scroll zoom</p>
@@ -173,7 +177,8 @@
 <datalist id="fontList"></datalist>
 
 <dialog id="openDlg" aria-labelledby="openH">
-  <h3 id="openH">Saved designs</h3>
+  <h3 id="openH">Saved jobs</h3>
+  <p class="hint" style="margin:0 0 10px;max-width:520px">Each one is an Excel you imported, with every change you made on its rows. Click one to carry on where you left off — then download the print files again if needed.</p>
   <div id="openList" class="openlist"></div>
   <div class="dlg-actions"><button id="openClose">Close</button></div>
 </dialog>
