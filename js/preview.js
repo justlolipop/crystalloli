@@ -57,17 +57,64 @@ let allRows = [], tab = null;
 
 // one tab per crystal design (jenis plak) in the order; a design not imported into Crystal Studio
 // yet is marked
+const ALL = "\u0000all"; // the ALL tab: every crystal of the order at once
+
 function show(rows) {
   allRows = rows || [];
   const groups = groupRows(allRows);
-  if (!groups.some((g) => g.jenis === tab)) tab = groups.length ? groups[0].jenis : null;
-  tabs.innerHTML = groups.map((g) => {
+  if (tab !== ALL && !groups.some((g) => g.jenis === tab)) tab = groups.length ? ALL : null;
+  const total = groups.reduce((n, g) => n + g.tiles.reduce((m, t) => m + t.qty, 0), 0);
+  tabs.innerHTML = (groups.length ? `<button type="button" class="tab${tab === ALL ? " on" : ""}" data-jenis="${ALL}"
+    title="Every crystal in this order">ALL<span>${total}</span></button>` : "") + groups.map((g) => {
     const count = g.tiles.reduce((n, t) => n + t.qty, 0), missing = !templateFor(library, g.jenis);
     return `<button type="button" class="tab${g.jenis === tab ? " on" : ""}${missing ? " missing" : ""}" data-jenis="${esc(g.jenis)}"
       title="${missing ? "No Crystal Studio design for this yet" : esc(g.jenis)}">${esc(g.jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, ""))}<span>${count}</span></button>`;
   }).join("");
   tabs.hidden = !groups.length;
-  showTab(groups.find((g) => g.jenis === tab));
+  if (tab === ALL) showAll(groups);
+  else showTab(groups.find((g) => g.jenis === tab));
+}
+
+// ALL: a small picture of every different crystal, design after design; click one to see it big
+const smalls = new Map(); // slide key -> small picture
+async function showAll(groups) {
+  const my = ++job;
+  slides = [];
+  columns = [...new Set(allRows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
+  const cells = groups.flatMap((g) => {
+    const it = templateFor(library, g.jenis);
+    return it ? g.tiles.map((t, i) => ({ g, it, t, i })) : [{ g, it: null, t: null, i: 0 }];
+  });
+  out.innerHTML = `<div class="grid">${cells.map((c, n) => `
+    <button type="button" class="cell${c.it ? "" : " missing"}" data-n="${n}" title="${c.it ? "See it big" : "No Crystal Studio design for this yet"}">
+      <span class="thumb">${c.it ? "…" : "Not imported yet"}</span>
+      <span class="clabel"><b>${esc(c.g.jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, ""))}</b>${c.t ? ` ×${c.t.qty}` : ""}</span>
+      <span class="clabel">${c.t ? esc(caption(c.t.row)) : ""}</span>
+    </button>`).join("")}</div>`;
+  out.onclick = (e) => {
+    const b = e.target.closest(".cell");
+    if (!b) return;
+    const c = cells[+b.dataset.n];
+    tab = c.g.jenis;
+    at = c.i;
+    zoom = 1;
+    show(allRows);
+  };
+  sendHeight();
+  for (const [n, c] of cells.entries()) {
+    if (!c.it) continue;
+    const key = c.g.jenis + "\u0002" + TEXT_FIELDS.map((f) => c.t.row[f] || "").join("\u0001");
+    if (!smalls.has(key)) {
+      try {
+        const scene = await libraryScene(c.it, c.t.row, columns);
+        smalls.set(key, (await renderOffscreen({ scene }, 45)).url);
+      } catch (e) { smalls.set(key, null); }
+    }
+    if (my !== job) return; // another tab was picked meanwhile
+    const el = out.querySelector(`.cell[data-n="${n}"] .thumb`);
+    if (el) el.innerHTML = smalls.get(key) ? `<img alt="" src="${smalls.get(key)}">` : "Couldn't draw this one";
+  }
+  sendHeight();
 }
 
 tabs.onclick = (e) => {
@@ -114,6 +161,7 @@ function showTab(g) {
   document.getElementById("vIn").onclick = () => setZoom(1);
   document.getElementById("vOut").onclick = () => setZoom(-1);
   document.getElementById("flip").onchange = () => draw();
+  out.onclick = null;
   document.getElementById("vStage").onclick = (e) => { if (e.target.tagName === "IMG") setZoom(zoom >= ZOOMS[ZOOMS.length - 1] ? -9 : 1); };
   // ✎ Edit: Crystal Studio opens in a new tab with this design's rows, carried in the link itself
   // (after the #, so they never leave this computer)
