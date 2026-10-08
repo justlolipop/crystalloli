@@ -10,6 +10,7 @@ import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue } 
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
+import { templateFor, sources as jenisSources } from "./jenis.js";
 
 const PRINT_DPI = 300;
 // same columns as the master order Excel (event_header, year, position, event_line_1, …)
@@ -59,55 +60,18 @@ const canon = (r) => { const g = S.groups[S.groupOf[r]]; return g ? g.rows[0] : 
 const groupRows = (r) => { const g = S.groups[S.groupOf[r]]; return g ? g.rows : [r]; };
 
 // ------------------------------------------------------------------ crystal from column F
-// "CRYSTAL / 80-B / DESIGN 2" -> the imported file with 80-B in its name, its 2nd design (B)
-
-function parseJenis(v) {
-  let s = String(v || "").toUpperCase().replace(/\s+/g, " ").trim();
-  if (!s) return null;
-  const dm = /\bDESIGN\s*([A-Z]|\d{1,2})\b/.exec(s);
-  s = s.replace(/\bDESIGN\s*([A-Z]|\d{1,2})\b/, " ").replace(/\b(DTF\s+)?CRYSTAL\b/g, " ").replace(/[\/|]+/g, " ").replace(/\s+/g, " ").trim();
-  return s ? { code: s, design: dm ? dm[1] : "" } : null;
-}
-
-function findSource(code) {
-  // "R-7", "R7" and "R 7" all match a file called "CRYSTAL R-7"; "011A" also matches "0011A"
-  let pat = code.replace(/[^A-Z0-9]+/g, "").split("").join("[^A-Z0-9]*");
-  if (!pat) return null;
-  if (/^\d/.test(pat)) pat = "0*" + pat;
-  const re = new RegExp("(^|[^A-Z0-9])" + pat + "(?![A-Z0-9])");
-  return sources().filter((s) => re.test(s.file.toUpperCase().replace(/\.(AI|PDF|SVG)$/, "")))
-    .sort((a, b) => a.file.length - b.file.length)[0] || null;
-}
-
-function pickDesign(items, d) {
-  if (!items.length) return null;
-  if (!d) return items[0];
-  const n = /^\d+$/.test(d) ? +d : d.charCodeAt(0) - 64;
-  const letter = String.fromCharCode(64 + n);
-  const re = new RegExp("—\\s*(DESIGN\\s*)?(" + letter + "|" + n + ")\\s*$", "i");
-  return items.find((x) => re.test(x.name)) || items[n - 1] || null;
-}
+// (the matching itself is in jenis.js, shared with the preview page)
 
 // undefined: the row names no crystal · null: it names one that isn't imported · else its key
 function autoKey(r) {
-  const j = parseJenis((S.rows[r] || {}).jenis_plak);
-  if (!j) return undefined;
-  const src = findSource(j.code);
-  const it = src && pickDesign(src.items, j.design);
-  return it ? "lib|" + it.id : null;
+  const it = templateFor(S.library, (S.rows[r] || {}).jenis_plak);
+  return it === undefined ? undefined : it ? "lib|" + it.id : null;
 }
 const jenisLabel = (r) => String((S.rows[r] || {}).jenis_plak || "").replace(/\s+/g, " ").trim();
 
 // ------------------------------------------------------------------ templates for a row
 
-function sources() {
-  const groups = new Map();
-  for (const it of S.library) {
-    if (!groups.has(it.file)) groups.set(it.file, []);
-    groups.get(it.file).push(it);
-  }
-  return [...groups].map(([file, items]) => ({ file, label: file.replace(/\.(ai|pdf|svg)$/i, ""), items: items.sort((a, b) => (a.order || 0) - (b.order || 0)) }));
-}
+const sources = () => jenisSources(S.library);
 
 function keyFor(r) {
   r = canon(r);

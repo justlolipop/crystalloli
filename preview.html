@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Crystal preview</title>
+<!-- Shown inside another website (the order system's Production page): that page sends the
+     order's crystal rows, and this draws each one on its Crystal Studio template. -->
+<style>
+  :root { --bg: transparent; --text: #1d1f20; --muted: #6b6f75; --line: #d4d6da; --tile: #ffffff; --accent: #45688a; --warn: #b45309; }
+  :root[data-theme="dark"] { --text: #e4ebff; --muted: #9aa8cc; --line: #22304f; --tile: #0b1222; --accent: #2f8bff; --warn: #f2b35b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
+  .msg { color: var(--muted); padding: 8px 0; }
+  .group { margin: 0 0 18px; }
+  .group h3 { margin: 0 0 2px; font-size: 13px; letter-spacing: .02em; }
+  .group .sub { color: var(--muted); font-size: 12px; margin-bottom: 8px; }
+  .group .sub.warn { color: var(--warn); }
+  .tiles { display: flex; flex-wrap: wrap; gap: 10px; }
+  .tile { width: 180px; background: var(--tile); border: 1px solid var(--line); border-radius: 6px; padding: 6px; }
+  .tile .pic { height: 220px; display: flex; align-items: center; justify-content: center; }
+  .tile img { max-width: 100%; max-height: 100%; }
+  .tile.flip img { transform: scaleX(-1); }
+  .tile .cap { margin-top: 4px; font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .tile .qty { float: right; color: var(--accent); font-weight: 700; }
+  .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
+  .bar label { cursor: pointer; }
+</style>
+</head>
+<body>
+<div class="bar" id="bar" hidden><label><input type="checkbox" id="flip"> Flip to read (mirrored designs print back to front)</label></div>
+<div id="out"><p class="msg">Waiting for the order…</p></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script type="module" src="js/preview.js"></script>
+</body>
+</html>
