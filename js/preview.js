@@ -75,22 +75,46 @@ function show(rows) {
   else showTab(groups.find((g) => g.jenis === tab));
 }
 
-// ALL: a small picture of every different crystal, design after design; click one to see it big
+// ALL: every crystal of the order on one board, design after design, to look over at once; − / ＋
+// make them all bigger or smaller, click one to see it alone. "Generate all crystals" draws every
+// one full size and downloads them together in one .zip.
 const smalls = new Map(); // slide key -> small picture
+const THUMB_H = 170, THUMB_DPI = 100; // drawn sharp enough for the biggest zoom
+let allZoom = 1, allCells = [];
+const rowKey = (jenis, row) => jenis + "\u0002" + TEXT_FIELDS.map((f) => row[f] || "").join("\u0001");
+const short = (jenis) => jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, "");
+
 async function showAll(groups) {
   const my = ++job;
   slides = [];
   columns = [...new Set(allRows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
-  const cells = groups.flatMap((g) => {
+  const cells = allCells = groups.flatMap((g) => {
     const it = templateFor(library, g.jenis);
     return it ? g.tiles.map((t, i) => ({ g, it, t, i })) : [{ g, it: null, t: null, i: 0 }];
   });
-  out.innerHTML = `<div class="grid">${cells.map((c, n) => `
-    <button type="button" class="cell${c.it ? "" : " missing"}" data-n="${n}" title="${c.it ? "See it big" : "No Crystal Studio design for this yet"}">
-      <span class="thumb">${c.it ? "…" : "Not imported yet"}</span>
-      <span class="clabel"><b>${esc(c.g.jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, ""))}</b>${c.t ? ` ×${c.t.qty}` : ""}</span>
+  const ready = cells.filter((c) => c.it).length;
+  out.innerHTML = `
+    <div class="abar">
+      <span class="muted">${ready} crystal${ready === 1 ? "" : "s"} · click one to see it alone</span>
+      <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
+      <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Draw every crystal full size (300 DPI) and download them all in one .zip">⬇ Generate all crystals</button>
+      <span id="aGenMsg" class="muted"></span>
+    </div>
+    <div class="grid" id="aGrid" style="--th:${Math.round(THUMB_H * allZoom)}px">${cells.map((c, n) => `
+    <button type="button" class="cell${c.it ? "" : " missing"}" data-n="${n}" title="${c.it ? "See it alone" : "No Crystal Studio design for this yet"}">
+      <span class="thumb">${c.it && smalls.get(rowKey(c.g.jenis, c.t.row)) ? `<img alt="" src="${smalls.get(rowKey(c.g.jenis, c.t.row))}">` : c.it ? "…" : "Not imported yet"}</span>
+      <span class="clabel"><b>${esc(short(c.g.jenis))}</b>${c.t ? ` ×${c.t.qty}` : ""}</span>
       <span class="clabel">${c.t ? esc(caption(c.t.row)) : ""}</span>
     </button>`).join("")}</div>`;
+  const setAllZoom = (step) => {
+    allZoom = ZOOMS[Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(allZoom) + step))];
+    document.getElementById("aGrid").style.setProperty("--th", Math.round(THUMB_H * allZoom) + "px");
+    document.getElementById("aZoom").textContent = Math.round(allZoom * 100) + "%";
+    sendHeight();
+  };
+  document.getElementById("aIn").onclick = () => setAllZoom(1);
+  document.getElementById("aOut").onclick = () => setAllZoom(-1);
+  document.getElementById("aGen").onclick = generateAll;
   out.onclick = (e) => {
     const b = e.target.closest(".cell");
     if (!b) return;
@@ -103,18 +127,56 @@ async function showAll(groups) {
   sendHeight();
   for (const [n, c] of cells.entries()) {
     if (!c.it) continue;
-    const key = c.g.jenis + "\u0002" + TEXT_FIELDS.map((f) => c.t.row[f] || "").join("\u0001");
-    if (!smalls.has(key)) {
-      try {
-        const scene = await libraryScene(c.it, c.t.row, columns);
-        smalls.set(key, (await renderOffscreen({ scene }, 45)).url);
-      } catch (e) { smalls.set(key, null); }
-    }
+    const key = rowKey(c.g.jenis, c.t.row);
+    if (smalls.has(key)) continue;
+    try {
+      const scene = await libraryScene(c.it, c.t.row, columns);
+      smalls.set(key, (await renderOffscreen({ scene }, THUMB_DPI)).url);
+    } catch (e) { smalls.set(key, null); }
     if (my !== job) return; // another tab was picked meanwhile
     const el = out.querySelector(`.cell[data-n="${n}"] .thumb`);
     if (el) el.innerHTML = smalls.get(key) ? `<img alt="" src="${smalls.get(key)}">` : "Couldn't draw this one";
   }
   sendHeight();
+}
+
+// every crystal of the order, full size, in one .zip: "SA4 - DESIGN B - TOKOH AKADEMIK PUTERI x1.png"
+let generating = false;
+async function generateAll() {
+  if (generating) return;
+  const btn = document.getElementById("aGen"), msg = document.getElementById("aGenMsg");
+  const cells = allCells.filter((c) => c.it);
+  if (!cells.length || !window.JSZip) { if (msg) msg.textContent = "Couldn't generate (zip tool not loaded)."; return; }
+  generating = true;
+  btn.disabled = true;
+  const zip = new JSZip(), used = new Set();
+  let n = 0, bad = 0;
+  try {
+    for (const c of cells) {
+      if (msg) msg.textContent = `Drawing ${++n} of ${cells.length}…`;
+      try {
+        const scene = await libraryScene(c.it, c.t.row, columns);
+        const { url } = await renderOffscreen({ scene }, 300);
+        let name = [short(c.g.jenis), caption(c.t.row)].filter(Boolean).join(" - ").replace(/\//g, "-").replace(/[\\:*?"<>|]+/g, "").replace(/\s+/g, " ").trim().slice(0, 120) + ` x${c.t.qty}`;
+        for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
+        used.add(name);
+        zip.file(name + ".png", url.split(",")[1], { base64: true });
+      } catch (e) { bad++; }
+    }
+    if (msg) msg.textContent = "Packing…";
+    const blob = await zip.generateAsync({ type: "blob" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = "crystals.zip";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+    if (msg) msg.textContent = `Done: ${cells.length - bad} crystal${cells.length - bad === 1 ? "" : "s"} downloaded` + (bad ? ` (${bad} couldn't be drawn)` : "") + ".";
+  } finally {
+    generating = false;
+    if (btn.isConnected) btn.disabled = false;
+  }
 }
 
 tabs.onclick = (e) => {
@@ -127,7 +189,7 @@ tabs.onclick = (e) => {
 };
 
 // One crystal at a time, like the editor: ‹ › go through this design's crystals (each different set
-// of words). Click the picture, or + / −, to zoom.
+// of words), then on to the next design. Click the picture, or + / −, to zoom.
 let slides = [], at = 0, zoom = 1, columns = [];
 const pics = new Map(); // slide key -> picture (data URL), drawn once
 const ZOOMS = [1, 1.5, 2, 3];
@@ -155,7 +217,17 @@ function showTab(g) {
       <span class="zoom"><button type="button" id="vOut" aria-label="Zoom out">−</button><span id="vZoom">100%</span><button type="button" id="vIn" aria-label="Zoom in">＋</button></span>
       <label id="vFlipWrap"><input type="checkbox" id="flip"> Flip to read</label>
     </div>`;
-  const go = (d) => { at = (at + d + slides.length) % slides.length; zoom = 1; draw(); };
+  // ‹ › go through this design's crystals, then on to the next design's (the tabs, in order)
+  const go = (d) => {
+    zoom = 1;
+    if (at + d >= 0 && at + d < slides.length) { at += d; draw(); return; }
+    const ds = groupRows(allRows), i = ds.findIndex((x) => x.jenis === tab);
+    if (ds.length < 2) { at = (at + d + slides.length) % slides.length; draw(); return; }
+    const next = ds[(i + d + ds.length) % ds.length];
+    tab = next.jenis;
+    at = d > 0 ? 0 : next.tiles.length - 1; // showTab keeps it in range
+    show(allRows);
+  };
   document.getElementById("vPrev").onclick = () => go(-1);
   document.getElementById("vNext").onclick = () => go(1);
   document.getElementById("vIn").onclick = () => setZoom(1);
@@ -188,7 +260,7 @@ document.addEventListener("keydown", (e) => {
 async function draw() {
   const my = ++job, sl = slides[at];
   if (!sl) return;
-  const one = slides.length < 2;
+  const one = slides.length < 2 && groupRows(allRows).length < 2;
   document.getElementById("vPrev").disabled = one;
   document.getElementById("vNext").disabled = one;
   document.getElementById("vJenis").textContent = sl.g.jenis;
@@ -204,7 +276,7 @@ async function draw() {
     sendHeight();
     return;
   }
-  const key = sl.g.jenis + "\u0002" + TEXT_FIELDS.map((f) => sl.t.row[f] || "").join("\u0001");
+  const key = rowKey(sl.g.jenis, sl.t.row);
   if (!pics.has(key)) {
     stage.innerHTML = `<p class="msg">Drawing…</p>`;
     try {
