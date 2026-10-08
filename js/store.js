@@ -158,6 +158,16 @@ export function fileUrl(rel) {
   return ONLINE ? `${BASE}/storage/v1/object/public/${BUCKET}/${rel}` : "/" + rel;
 }
 
+// ------------------------------------------------------------------ "something changed"
+
+// Crystal Studio and the order website's preview (same site, other tab / frame) hear each other:
+// a design or the master template saved here makes the preview draw again by itself.
+const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel("crystal-studio") : null;
+const announce = (r) => { try { channel && channel.postMessage({ type: "library-changed" }); } catch (e) {} return r; };
+export function onLibraryChanged(fn) {
+  if (channel) channel.addEventListener("message", (e) => { if (e.data && e.data.type === "library-changed") fn(); });
+}
+
 // ------------------------------------------------------------------ the store
 
 let localUp = null; // is the local server (server.js) running? asked once
@@ -167,11 +177,11 @@ export const store = {
   online: ONLINE,
   listDesigns: () => (ONLINE ? online.listDesigns() : api("GET", "/api/designs")),
   loadDesign: (id) => (ONLINE ? online.loadDesign(id) : api("GET", "/api/designs/" + encodeURIComponent(id))),
-  saveDesign: (d) => (ONLINE ? online.saveDesign(d) : api("POST", "/api/designs", d)),
+  saveDesign: (d) => (ONLINE ? online.saveDesign(d) : api("POST", "/api/designs", d)).then(announce),
   deleteDesign: (id) => (ONLINE ? online.deleteDesign(id) : api("DELETE", "/api/designs/" + encodeURIComponent(id))),
   listLibrary: () => (ONLINE ? online.listLibrary() : api("GET", "/api/library")),
-  saveLibrary: (t) => (ONLINE ? online.saveLibrary(t) : api("POST", "/api/library", t)),
-  deleteLibrary: (id) => (ONLINE ? online.deleteLibrary(id) : api("DELETE", "/api/library/" + encodeURIComponent(id))),
+  saveLibrary: (t) => (ONLINE ? online.saveLibrary(t) : api("POST", "/api/library", t)).then(announce),
+  deleteLibrary: (id) => (ONLINE ? online.deleteLibrary(id) : api("DELETE", "/api/library/" + encodeURIComponent(id))).then(announce),
   // the imported .ai itself (as PDF), for redrawing the artwork at print resolution
   async saveOriginal(name, bytes) {
     if (ONLINE) return online.saveOriginal(name, bytes);
@@ -194,7 +204,7 @@ export const store = {
   fontFiles: () => (ONLINE ? online.fontFiles() : Promise.resolve({})),
   // the master template: the look of the header, position and name texts on every design
   master: () => (ONLINE ? online.setting("master", {}) : api("GET", "/api/master")),
-  saveMaster: (m) => (ONLINE ? online.saveSetting("master", m && typeof m === "object" && !Array.isArray(m) ? m : {}) : api("POST", "/api/master", m)),
+  saveMaster: (m) => (ONLINE ? online.saveSetting("master", m && typeof m === "object" && !Array.isArray(m) ? m : {}) : api("POST", "/api/master", m)).then(announce),
   // true when the studio can work: online, or this page comes from server.js
   async ping() { return ONLINE || local(); },
   // this PC's server (template folder, Illustrator) is there

@@ -183,8 +183,8 @@ async function readBody(req) {
   return buf.length ? JSON.parse(buf.toString("utf8")) : {};
 }
 
-function send(res, status, obj) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+function send(res, status, obj, extra = {}) {
+  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store", ...extra });
   res.end(JSON.stringify(obj));
 }
 
@@ -253,6 +253,63 @@ function runInIllustrator(body) {
   return { ok: true, folder: outDir };
 }
 
+// The online Crystal Studio (and the order website's preview, which is part of it) may ask this PC to
+// open its crystals in Illustrator. Only these pages: this PC's own studio, and the online one
+// ("studioOrigins" in studio.config.json to add another, e.g. a custom domain).
+const ONLINE_STUDIO = ["https://justlolipop.github.io"];
+function allowedOrigin(o) {
+  if (!o) return true; // not from a web page
+  if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
+  const extra = readJson(CONFIG_FILE, {}).studioOrigins;
+  return [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])].includes(o);
+}
+function corsHeaders(req) {
+  const o = req.headers.origin;
+  return o && allowedOrigin(o) ? { "Access-Control-Allow-Origin": o, "Access-Control-Allow-Methods": "POST, GET, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type", "Access-Control-Allow-Private-Network": "true", Vary: "Origin" } : {};
+}
+
+// The crystals as Illustrator-ready .svg (made by the page, words still editable) -> saved in
+// output\<date time>\, then Illustrator opens each one and saves it as .ai next to it. The first
+// few stay open; the folder opens too.
+function openSvgsInIllustrator(body) {
+  const files = (Array.isArray(body.files) ? body.files : []).filter((f) => f && typeof f.name === "string" && typeof f.svg === "string" && /^\s*(<\?xml|<svg)/.test(f.svg));
+  if (!files.length) return { ok: false, error: "Nothing to open." };
+  const d = new Date(), two = (n) => String(n).padStart(2, "0");
+  const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}`;
+  const outDir = path.join(OUTPUT_DIR, stamp);
+  fs.mkdirSync(outDir, { recursive: true });
+  const used = new Set(), paths = [];
+  for (const f of files) {
+    let name = f.name.replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 120) || "crystal";
+    for (let k = 2; used.has(name.toLowerCase()); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
+    used.add(name.toLowerCase());
+    const p = path.join(outDir, name + ".svg");
+    fs.writeFileSync(p, f.svg);
+    paths.push(p);
+  }
+  const keepOpen = 5;
+  const jsx = `#target illustrator
+app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
+var files = ${JSON.stringify(paths.map((p) => p.replace(/\\/g, "/")))};
+for (var i = 0; i < files.length; i++) {
+  try {
+    var doc = app.open(new File(files[i]));
+    doc.saveAs(new File(files[i].replace(/\\.svg$/i, ".ai")), new IllustratorSaveOptions());
+    if (i >= ${keepOpen}) doc.close(SaveOptions.DONOTSAVECHANGES);
+  } catch (e) {}
+}
+app.userInteractionLevel = UserInteractionLevel.DISPLAYALERTS;
+`;
+  const script = path.join(outDir, "_open.jsx");
+  fs.writeFileSync(script, jsx);
+  const exe = illustratorExe();
+  try { spawn(process.platform === "win32" ? "explorer" : "open", [outDir], { detached: true, stdio: "ignore" }).unref(); } catch (e) {}
+  if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC. The .svg files are in " + outDir, folder: outDir };
+  spawn(exe, [script], { detached: true, stdio: "ignore" }).unref();
+  return { ok: true, folder: outDir, count: paths.length };
+}
+
 // Handler function for native HTTP requests
 async function handleNativeRequest(req, res) {
   const url = new URL(req.url, "http://localhost");
@@ -261,6 +318,13 @@ async function handleNativeRequest(req, res) {
   const m = req.method;
   try {
     if (p === "/api/fonts" && m === "GET") return send(res, 200, readJson(config().fontsFile, []));
+
+    if (p === "/api/illustrator/svgs") {
+      if (!allowedOrigin(req.headers.origin)) return send(res, 403, { error: "Not allowed" });
+      if (m === "OPTIONS") { res.writeHead(204, corsHeaders(req)); return res.end(); }
+      if (m === "GET") return send(res, 200, { ok: true }, corsHeaders(req)); // "is Crystal Studio running on this PC?"
+      if (m === "POST") return send(res, 200, openSvgsInIllustrator(await readBody(req)), corsHeaders(req));
+    }
 
     if (p === "/api/illustrator" && m === "POST") {
       // only this studio's own page may start Illustrator (not another website open in the browser)
