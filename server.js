@@ -322,7 +322,11 @@ async function handleNativeRequest(req, res) {
     if (p === "/api/illustrator/svgs") {
       if (!allowedOrigin(req.headers.origin)) return send(res, 403, { error: "Not allowed" });
       if (m === "OPTIONS") { res.writeHead(204, corsHeaders(req)); return res.end(); }
-      if (m === "GET") return send(res, 200, { ok: true }, corsHeaders(req)); // "is Crystal Studio running on this PC?"
+      // "is Crystal Studio running on this PC?" — and which pages may send it crystals
+      if (m === "GET") {
+        const extra = readJson(CONFIG_FILE, {}).studioOrigins;
+        return send(res, 200, { ok: true, origins: [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])] }, corsHeaders(req));
+      }
       if (m === "POST") return send(res, 200, openSvgsInIllustrator(await readBody(req)), corsHeaders(req));
     }
 
@@ -378,6 +382,8 @@ async function handleNativeRequest(req, res) {
     if (p === "/" || p === "/index.html") return sendFile(res, APP_DIR, "index.html");
     // the designs only, for another website to show (see js/preview.js)
     if (p === "/preview.html") return sendFile(res, APP_DIR, "preview.html");
+    // the small window that takes crystals from the online studio / order website to Illustrator
+    if (p === "/illustrator.html") return sendFile(res, APP_DIR, "illustrator.html");
     if (p === "/app.css" || p.startsWith("/js/")) return sendFile(res, APP_DIR, p.slice(1));
     return send(res, 404, { error: "Not found" });
   } catch (e) {

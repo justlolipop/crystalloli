@@ -12,6 +12,7 @@ import { store, onLibraryChanged } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll, hiResBackground } from "./library.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
+import { illustratorWindow } from "./to-illustrator.js";
 
 const DPI = 150;      // sharp enough to zoom in on the words
 const BASE_H = 380;   // the picture's height on the page before zooming (px)
@@ -163,15 +164,9 @@ async function showAll(groups) {
 
 // every crystal of the order, full size, in one .zip: "SA4 - DESIGN B - TOKOH AKADEMIK PUTERI x1.png"
 let generating = false;
-// Crystal Studio's program on this PC (server.js): it can open files in Illustrator, which a web
-// page can't. Same address when this page comes from it; else the usual local one.
-const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "" : "http://localhost:5190";
-async function localStudio() {
-  try { return (await fetch(LOCAL + "/api/illustrator/svgs", { method: "GET" })).ok; } catch (e) { return false; }
-}
-
-// ai: as Illustrator files. On a PC running Crystal Studio they open straight in Illustrator and
-// are saved there as .ai; anywhere else they download in one .zip (as .svg, to Save As .ai).
+// ai: as Illustrator files. On a PC running Crystal Studio (Start Studio.bat) they open straight in
+// Illustrator and are saved there as .ai (see to-illustrator.js); anywhere else they download in one
+// .zip (as .svg, to Save As .ai).
 async function generateAll(ai) {
   if (generating) return;
   const btn = document.getElementById(ai ? "aAi" : "aGen"), msg = document.getElementById("aGenMsg");
@@ -180,9 +175,8 @@ async function generateAll(ai) {
   generating = true;
   btn.disabled = true;
   const say = (t) => { if (msg) msg.textContent = t; };
+  const bridge = ai ? illustratorWindow() : null; // opened now, while it's a click
   try {
-    const direct = ai && (await localStudio());
-    if (!direct && !window.JSZip) return say("Couldn't generate (zip tool not loaded).");
     const files = [], used = new Set();
     let n = 0, bad = 0;
     for (const c of cells) {
@@ -196,13 +190,13 @@ async function generateAll(ai) {
       } catch (e) { bad++; }
     }
     const badNote = bad ? ` (${bad} couldn't be drawn)` : "";
-    if (direct) {
+    if (bridge) {
       say("Opening in Illustrator…");
-      const r = await fetch(LOCAL + "/api/illustrator/svgs", { method: "POST", headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ files: files.map((f) => ({ name: f.name, svg: f.data })) }) }).then((x) => x.json()).catch((e) => ({ ok: false, error: e.message }));
-      return say(r.ok ? `Opening ${files.length} crystal${files.length === 1 ? "" : "s"} in Illustrator${badNote}; each is saved as .ai in ${r.folder}.`
+      const r = await bridge.send(files.map((f) => ({ name: f.name, svg: f.data })));
+      if (r) return say(r.ok ? `Opening ${files.length} crystal${files.length === 1 ? "" : "s"} in Illustrator${badNote}; each is saved as .ai in ${r.folder}.`
         : `Couldn't open Illustrator: ${r.error || "no answer"}`);
     }
+    if (!window.JSZip) return say("Couldn't generate (zip tool not loaded).");
     say("Packing…");
     const zip = new JSZip();
     for (const f of files) {
