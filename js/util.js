@@ -50,6 +50,26 @@ export function ask(msg, okLabel = "OK") {
   });
 }
 
+// A question with a box to type in (password: the letters are hidden) -> the text, or null if cancelled
+export function askText(msg, { password = false, okLabel = "OK" } = {}) {
+  return new Promise((done) => {
+    const d = document.createElement("dialog");
+    d.innerHTML = `<form method="dialog" style="margin:0"><p style="margin:0 0 10px;max-width:420px;line-height:1.5"></p>
+      <input class="path" autocomplete="off" style="width:100%"><div class="dlg-actions"><button type="button" data-a="0">Cancel</button><button class="primary" data-a="1"></button></div></form>`;
+    d.querySelector("p").textContent = msg;
+    const inp = d.querySelector("input");
+    inp.type = password ? "password" : "text";
+    d.querySelector("[data-a='1']").textContent = okLabel;
+    let answer = null;
+    d.querySelector("form").addEventListener("submit", () => { answer = inp.value; });
+    d.querySelector("[data-a='0']").onclick = () => d.close();
+    d.addEventListener("close", () => { d.remove(); done(answer); });
+    document.body.appendChild(d);
+    d.showModal();
+    inp.focus();
+  });
+}
+
 let toastTimer;
 export function toast(msg, kind) {
   const el = $("toast");

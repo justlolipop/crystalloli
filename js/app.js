@@ -3,13 +3,14 @@
 //   Canvas (middle)   the design for the current row, edited Canva-style
 //   Templates (below) your crystal .ai files, and the designs inside each one
 
-import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl } from "./util.js";
+import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll } from "./library.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
+import { EDIT_PASSWORD_SHA256 } from "./config.js";
 import { templateFor, sources as jenisSources } from "./jenis.js";
 
 const PRINT_DPI = 300;
@@ -88,8 +89,12 @@ function sceneFor(key, r) {
 let showToken = 0;
 async function show(r, key) {
   const token = ++showToken;
-  S.row = canon(Math.max(0, Math.min(r, S.rows.length - 1)));
-  key = key || keyFor(S.row);
+  const nextRow = canon(Math.max(0, Math.min(r, S.rows.length - 1)));
+  // a design opened by hand (Templates panel) stays until another row is picked
+  if (key) S.manual = key && key !== keyFor(nextRow) ? key : null;
+  else if (nextRow !== S.row) S.manual = null;
+  S.row = nextRow;
+  key = key || S.manual || keyFor(S.row);
   S.key = key;
   const it = itemOf(key);
   if (it) S.source = it.file;
@@ -241,24 +246,63 @@ $("elList").addEventListener("click", (e) => {
 
 // ------------------------------------------------------------------ Templates panel
 
+// every imported file; click one to see its designs, click a design to open it (password first)
+let openFile = null;
 function renderSources() {
-  $("sources").innerHTML = sources().map((s) => `<span class="src" title="${esc(s.file)}">` +
+  const all = sources();
+  if (openFile && !all.some((s) => s.file === openFile)) openFile = null;
+  $("sources").innerHTML = all.map((s) => `<span class="src${s.file === openFile ? " on" : ""}" data-file="${esc(s.file)}" title="See this file's designs, to change one">` +
     `${esc(s.label)} <span class="tag">${s.items.length}</span>` +
     `<button class="x" data-delfile="${esc(s.file)}" aria-label="Delete ${esc(s.label)}" title="Remove this file's designs from the studio">×</button></span>`).join("")
-    || `<p class="hint">No templates yet. Press <b>Template folder</b> to import from your DESIGN TEMPLATE folder.</p>`;
+    || `<p class="hint">No templates yet. Press <b>Import file</b> to add a crystal .ai.</p>`;
+  const src = all.find((s) => s.file === openFile);
+  $("srcDesigns").innerHTML = src ? src.items.map((it) =>
+    `<button type="button" data-open="${esc(it.id)}"${"lib|" + it.id === S.key ? ' aria-pressed="true"' : ""}>${esc(it.name.replace(/^.*—\s*/, "") || it.name)}</button>`).join("") : "";
+  $("srcDesigns").hidden = !src;
+}
+
+// opening a design the Excel row didn't pick, to change it: asks the password once (this tab)
+let unlocked = false;
+try { unlocked = sessionStorage.getItem("crystal-unlocked") === "1"; } catch (e) {}
+async function unlock() {
+  if (unlocked || !EDIT_PASSWORD_SHA256) return true;
+  const pw = await askText("Password to change a design that isn't from the Excel:", { password: true, okLabel: "Open" });
+  if (pw == null) return false;
+  const hex = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("");
+  if (hex !== EDIT_PASSWORD_SHA256) { toast("Wrong password.", "bad"); return false; }
+  unlocked = true;
+  try { sessionStorage.setItem("crystal-unlocked", "1"); } catch (e) {}
+  return true;
+}
+async function openTemplate(id) {
+  const key = "lib|" + id;
+  if (key === S.key) return;
+  if (key !== keyFor(S.row) && !(await unlock())) return;
+  await show(S.row, key);
 }
 
 // which crystal this row uses — read-only, it comes from the Excel's jenis_plak
 function renderTemplates() {
   const it = itemOf(S.key);
-  $("tplNow").innerHTML = it
+  $("tplNow").innerHTML = it && S.manual
+    ? `Changing <b>${esc(it.name)}</b> <span class="hint">(opened by hand, filled with this row's words)</span> <button type="button" id="backToRow">Back to this row's crystal</button>`
+    : it
     ? `This crystal uses <b>${esc(it.name)}</b> <span class="hint">(from jenis_plak)</span>`
     : `<span class="hint">The crystal for each row is picked from its <b>jenis_plak</b> in the Excel.</span>`;
 }
 
+$("tplNow").addEventListener("click", (e) => {
+  if (e.target.closest("#backToRow")) { S.manual = null; show(S.row); }
+});
 $("sources").addEventListener("click", (e) => {
   const b = e.target.closest("[data-delfile]");
-  if (b) deleteFile(b.dataset.delfile);
+  if (b) return deleteFile(b.dataset.delfile);
+  const f = e.target.closest("[data-file]");
+  if (f) { openFile = openFile === f.dataset.file ? null : f.dataset.file; renderSources(); }
+});
+$("srcDesigns").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-open]");
+  if (b) openTemplate(b.dataset.open);
 });
 
 async function deleteFile(file) {
