@@ -4,7 +4,7 @@
 //   Templates (below) your crystal .ai files, and the designs inside each one
 
 import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl } from "./util.js";
-import { setFontList, fallbackFor, describeFont } from "./fonts.js";
+import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll } from "./library.js";
 import { illustratorScript } from "./illustrator.js";
@@ -327,6 +327,7 @@ async function importFiles(files) {
         if (prev) t.layout = prev.layout;
       }
       const linked = autoLink(tpls);
+      if (tpls.warning) bad.push(tpls.warning);
       for (const t of tpls) {
         const saved = await store.saveLibrary(t);
         S.library.push(saved);
@@ -808,6 +809,9 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     return;
   }
   try { setFontList(await store.fonts()); } catch (e) {}
+  try { setFontFiles(await store.fontFiles()); } catch (e) {}
+  // the template folder is on this PC: only there when the studio runs from server.js
+  if (!(await store.hasLocal())) $("folderBtn").hidden = true;
   try { setMaster(await store.master()); } catch (e) {}
   try { S.library = await store.listLibrary(); } catch (e) { S.library = []; toast(e.message, "bad"); }
   // designs imported before the logo clean-up: cleaned once now (and saved)

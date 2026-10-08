@@ -13,7 +13,7 @@
 import { loose } from "./util.js";
 import { useFont, findFont } from "./fonts.js";
 import { fitSize } from "./measure.js";
-import { store } from "./store.js";
+import { store, fileUrl } from "./store.js";
 import { visibleTextItems, readableText, withoutLiveText } from "./pdf.js";
 import { pagePlan, drawOnly, serial, findElements } from "./elements.js";
 
@@ -176,7 +176,7 @@ export async function libraryScene(item, row, columns) {
 
   // .ai / .pdf designs: their artwork (without its logo and old words) + the master template's 3 texts
   const images = item.background
-    ? [{ role: "bg", src: "/" + item.background + "?v=" + (item.updated || 0), left: 0, top: 0, width: item.width, height: item.height }] : [];
+    ? [{ role: "bg", src: fileUrl(item.background) + "?v=" + (item.updated || 0), left: 0, top: 0, width: item.width, height: item.height }] : [];
   return { width: item.width, height: item.height, background: "", images, texts: await masterTexts(item, row) };
 }
 
@@ -370,7 +370,14 @@ async function importPdf(file, progress) {
     throw new Error("Couldn't open it (" + e.message + ").");
   }
   progress && progress(`Keeping a copy of ${file.name} for full-quality downloads…`);
-  const { path: original } = await store.saveOriginal(file.name, bytes);
+  // too big to keep online: the design still imports (its logo is taken out now), but full-quality
+  // downloads use the screen picture and "Remove from background" can't be used on it later
+  let original = null, keepWarning = "";
+  try { ({ path: original } = await store.saveOriginal(file.name, bytes)); } catch (e) {
+    if (!store.online) throw e;
+    progress && progress(`Couldn't keep a copy of ${file.name}: ${e.message}`);
+    keepWarning = `${file.name}: ${e.message} It's imported, but full-quality downloads and Remove from background won't work for it.`;
+  }
   const base = file.name.replace(/\.(ai|pdf)$/i, "");
   const out = [];
   for (let n = 1; n <= doc.numPages; n++) {
@@ -432,6 +439,7 @@ async function importPdf(file, progress) {
     });
     bare.canvas.width = bare.canvas.height = 0;
   }
+  if (keepWarning) out.warning = keepWarning;
   return out;
 }
 
@@ -730,7 +738,7 @@ function openOriginal(rel) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
     const factory = new CanvasFactory();
     factory.hideText = true;
-    originals.set(rel, pdfjsLib.getDocument({ url: "/" + rel, canvasFactory: factory, disableRange: true, disableStream: true }).promise);
+    originals.set(rel, pdfjsLib.getDocument({ url: fileUrl(rel), canvasFactory: factory, disableRange: true, disableStream: true }).promise);
   }
   return originals.get(rel);
 }

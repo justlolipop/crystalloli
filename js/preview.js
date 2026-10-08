@@ -7,7 +7,7 @@
 // whenever its height changes, so the frame can grow to fit.
 
 import { esc } from "./util.js";
-import { setFontList } from "./fonts.js";
+import { setFontList, setFontFiles } from "./fonts.js";
 import { store } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll } from "./library.js";
 import { renderOffscreen } from "./editor.js";
@@ -240,7 +240,7 @@ function showTab(g) {
   document.getElementById("vEdit").onclick = (e) => {
     e.preventDefault();
     const g = slides[at].g;
-    window.open("/#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, rows: g.tiles.map((t) => t.row) })), "_blank");
+    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, rows: g.tiles.map((t) => t.row) })), "_blank");
   };
   draw();
 }
@@ -311,6 +311,7 @@ window.addEventListener("message", (e) => {
 
 (async () => {
   try { setFontList(await store.fonts()); } catch (e) {}
+  try { setFontFiles(await store.fontFiles()); } catch (e) {}
   try { setMaster(await store.master()); } catch (e) {}
   try {
     library = await store.listLibrary();

@@ -5,6 +5,10 @@
 const faces = {}; // ps -> { css, ok, fallback, promise }
 let rows = [], byPs = {}, byLabel = {};
 
+// font files kept online (PostScript name -> address), used when this computer doesn't have the font
+let files = {};
+export function setFontFiles(map) { files = map && typeof map === "object" ? map : {}; }
+
 export const fontLabel = (r) => `${r[1]} ${r[2]}`.trim();
 const cssName = (ps) => "ps_" + String(ps).replace(/[^A-Za-z0-9]/g, "_");
 
@@ -46,7 +50,7 @@ export function useFont(ps, family, style) {
     const fam = family || (r && r[1]) || "";
     const sty = style || (r && r[2]) || "";
     const srcs = [ps, `${fam} ${sty}`.trim(), fam].filter(Boolean)
-      .map((n) => `local("${n.replace(/["\\]/g, "")}")`).join(", ");
+      .map((n) => `local("${n.replace(/["\\]/g, "")}")`).concat(files[ps] ? [`url("${files[ps].replace(/["\\]/g, "")}")`] : []).join(", ");
     const entry = { css: cssName(ps), ok: null, fallback: fam ? `"${fam.replace(/"/g, "")}", sans-serif` : "Arial" };
     entry.promise = (async () => {
       try {
