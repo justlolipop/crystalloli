@@ -719,7 +719,6 @@ async function illustratorJob(all) {
 const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "" : "http://localhost:5190";
 async function openInIllustrator(all) {
   const up = await fetch(LOCAL + "/api/illustrator/svgs").then((r) => r.ok).catch(() => false);
-  if (!up) return toast("To open in Illustrator, start Crystal Studio on this PC first (Start Studio.bat), then click again.", "bad");
   const files = [], used = new Set();
   const rows = all ? [...new Set(S.rows.map((_, i) => canon(i)))] : [S.row];
   for (const [n, r] of rows.entries()) {
@@ -737,6 +736,16 @@ async function openInIllustrator(all) {
     files.push({ name, svg });
   }
   if (!files.length) return toast("These rows have no crystal design to open.", "bad");
+  // without Start Studio.bat: download them (one .svg, or a .zip), to open in Illustrator by hand
+  if (!up) {
+    if (files.length === 1 || !window.JSZip) for (const f of files) downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
+    else {
+      const zip = new JSZip();
+      for (const f of files) zip.file(f.name + ".svg", f.svg);
+      downloadBlob(await zip.generateAsync({ type: "blob" }), safeName(S.design.name) + " - for Illustrator.zip");
+    }
+    return toast("Downloaded. Open it in Illustrator (words editable), then File › Save As › .ai. With Start Studio.bat running, it opens in Illustrator by itself.");
+  }
   toast("Opening in Illustrator…");
   const r = await fetch(LOCAL + "/api/illustrator/svgs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files }) })
     .then((x) => x.json()).catch((e) => ({ ok: false, error: e.message }));
