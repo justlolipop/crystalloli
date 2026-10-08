@@ -7,8 +7,8 @@
 <!-- Shown inside another website (the order system's Production page): that page sends the
      order's crystal rows, and this draws each one on its Crystal Studio template. -->
 <style>
-  :root { --bg: transparent; --text: #1d1f20; --muted: #6b6f75; --line: #d4d6da; --tile: #ffffff; --accent: #45688a; --warn: #b45309; }
-  :root[data-theme="dark"] { --text: #e4ebff; --muted: #9aa8cc; --line: #22304f; --tile: #0b1222; --accent: #2f8bff; --warn: #f2b35b; }
+  :root { color-scheme: light; --bg: transparent; --text: #1d1f20; --muted: #6b6f75; --line: #d4d6da; --tile: #ffffff; --accent: #45688a; --warn: #b45309; }
+  :root[data-theme="dark"] { color-scheme: dark; --text: #e4ebff; --muted: #9aa8cc; --line: #22304f; --tile: #0b1222; --accent: #2f8bff; --warn: #f2b35b; }
   * { box-sizing: border-box; }
   html, body { margin: 0; background: var(--bg); color: var(--text); font: 13px/1.4 system-ui, sans-serif; }
   .msg { color: var(--muted); padding: 8px 0; }
