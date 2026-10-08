@@ -46,3 +46,11 @@ export function templateFor(library, jenisPlak) {
   const src = findSource(library, j.code);
   return (src && pickDesign(src.items, j.design)) || null;
 }
+
+// One crystal of an order, by what it says: its jenis plak and its words. A design changed for one
+// order only is kept under this (the order website's preview finds it the same way).
+export const TEXT_FIELDS = ["event_header", "year", "position", "event_line_1", "event_line_2", "event_line_3"];
+export const normJenis = (v) => String(v || "").replace(/\s+/g, " ").trim();
+export const contentKey = (row) => normJenis(row.jenis_plak) + "\u0002" + TEXT_FIELDS.map((f) => String(row[f] || "")).join("\u0001");
+// where an order's own designs are saved (with the saved designs): "ORD-0030" -> "order-ord-0030"
+export const orderDesignId = (order) => ("order-" + String(order || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")).slice(0, 40);

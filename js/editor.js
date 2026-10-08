@@ -567,7 +567,20 @@ export const docSize = () => ({ w: ed.W, h: ed.H });
 export async function exportSvg(replace = {}) {
   cv.discardActiveObject();
   cv.renderAll();
-  let svg = cv.toSVG({ viewBox: { x: 0, y: 0, width: ed.W, height: ed.H }, width: ed.W, height: ed.H });
+  return finishSvg(cv.toSVG({ viewBox: { x: 0, y: 0, width: ed.W, height: ed.H }, width: ed.W, height: ed.H }), replace);
+}
+
+// one row's design (as renderOffscreen takes it) as an Illustrator-ready .svg: editable text in the
+// real fonts, the pictures inside the file
+export async function svgOffscreen(entry) {
+  const { sc, w, h } = await offscreen(entry);
+  sc.renderAll();
+  const svg = sc.toSVG({ viewBox: { x: 0, y: 0, width: w, height: h }, width: w, height: h });
+  sc.dispose();
+  return finishSvg(svg, {});
+}
+
+async function finishSvg(svg, replace) {
   // ask Illustrator for the real font (PostScript name), not this page's internal name
   const map = cssToPs();
   for (const css of Object.keys(map).sort((a, b) => b.length - a.length)) {
@@ -578,7 +591,7 @@ export async function exportSvg(replace = {}) {
   for (const s of srcs) {
     try {
       const plain = s.replace(/&amp;/g, "&");
-      const better = Object.keys(replace).find((k) => plain.endsWith(k));
+      const better = Object.keys(replace).find((k) => plain.split("?")[0].endsWith(k));
       const blob = await (await fetch(better ? replace[better] : plain)).blob();
       const data = await new Promise((res) => { const r = new FileReader(); r.onload = () => res(r.result); r.readAsDataURL(blob); });
       svg = svg.split(`xlink:href="${s}"`).join(`xlink:href="${data}"`);

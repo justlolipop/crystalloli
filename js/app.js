@@ -11,7 +11,7 @@ import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
-import { templateFor, sources as jenisSources } from "./jenis.js";
+import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
 
 const PRINT_DPI = 300;
 // same columns as the master order Excel (event_header, year, position, event_line_1, …)
@@ -37,6 +37,8 @@ const S = {
   library: [],
   design: { id: null, name: "Untitled design" },
   dirty: false,
+  order: null,    // opened from this order on the website (✎ Edit): its id
+  origKeys: [],   // each row as it came from the website (jenis plak + words), for "this order only"
 };
 const row = () => S.rows[S.row] || {};
 const itemOf = (key) => (key ? S.library.find((x) => "lib|" + x.id === key) : null);
@@ -806,6 +808,7 @@ async function openDialog() {
   $("openDlg").showModal();
   let list = [];
   try { list = await store.listDesigns(); } catch (err) { $("openList").innerHTML = `<p class="bad">${esc(err.message)}</p>`; return; }
+  list = list.filter((d) => !String(d.id).startsWith("order-")); // an order's own designs: opened from the website instead
   $("openList").innerHTML = list.map((d) => `<div class="drow">
       <button class="dopen" data-open="${esc(d.id)}">${d.thumb ? `<img alt="" src="${d.thumb}">` : '<span class="nothumb"></span>'}
         <span><b>${esc(d.name)}</b><small>${d.source ? "Excel: " + esc(d.source) + " · " : ""}${d.rows} row${d.rows === 1 ? "" : "s"}${d.changed ? ` · ${d.changed} changed by hand` : ""}</small>` +
@@ -829,6 +832,33 @@ $("openList").addEventListener("click", async (e) => {
 });
 
 $("saveBtn").onclick = saveDesign;
+// opened from an order on the website: the crystals changed here can be kept for that order only
+// (the website's preview then shows them; every other order keeps the default template). They're
+// kept by what each crystal says (jenis plak + words) as it came from the website.
+async function orderCustom() {
+  try { const d = await store.loadDesign(orderDesignId(S.order)); return (d && d.data && d.data.custom) || {}; } catch (e) { return {}; }
+}
+$("saveOrder").onclick = async () => {
+  if (!S.order) return;
+  const custom = await orderCustom();
+  for (const k of S.origKeys) delete custom[k]; // these crystals: as they are here now
+  let n = 0;
+  for (const [k, st] of Object.entries(S.edits)) {
+    const i = k.indexOf("|"), r = +k.slice(0, i), key = k.slice(i + 1);
+    if (S.origKeys[r] == null || key !== keyFor(r)) continue; // only the design the row's jenis plak picks
+    custom[S.origKeys[r]] = st;
+    n++;
+  }
+  $("saveOrder").disabled = true;
+  try {
+    await store.saveDesign({ id: orderDesignId(S.order), name: `Order ${S.order} — its own crystals`, data: { order: S.order, custom } });
+    S.dirty = false;
+    toast(n ? `Saved ${n} crystal${n === 1 ? "" : "s"} for order ${S.order} only. The website's preview shows ${n === 1 ? "it" : "them"} now.`
+      : `Order ${S.order} uses the default template again.`);
+  } catch (e) { toast("Couldn't save: " + e.message, "bad"); }
+  $("saveOrder").disabled = false;
+};
+
 $("backToOrder").onclick = async () => {
   if (S.dirty && !await ask("Changes made only on these rows (not saved as the default template) will be lost. Go back?")) return;
   S.dirty = false;
@@ -887,8 +917,17 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.columns = keys.map((k) => ({ key: k, label: k }));
     S.rows = opened.rows.map((r) => Object.fromEntries(keys.map((k) => [k, String(r[k] ?? "")])));
     S.sourceName = opened.name || "Order";
+    S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
+    S.origKeys = S.rows.map(contentKey);
     $("srcHint").textContent = `${S.sourceName} · ${S.rows.length} row${S.rows.length === 1 ? "" : "s"} from the order website`;
   }
   buildGroups();
+  if (S.order) {
+    $("saveOrder").hidden = false;
+    $("srcHint").textContent += ` · order ${S.order}`;
+    // what was already changed for this order comes back, to change further
+    const custom = await orderCustom();
+    S.rows.forEach((r, i) => { const k = keyFor(i), st = custom[S.origKeys[i]]; if (k && st) S.edits[i + "|" + k] = st; });
+  }
   await show(0);
 })();

@@ -177,7 +177,7 @@ export const store = {
   online: ONLINE,
   listDesigns: () => (ONLINE ? online.listDesigns() : api("GET", "/api/designs")),
   loadDesign: (id) => (ONLINE ? online.loadDesign(id) : api("GET", "/api/designs/" + encodeURIComponent(id))),
-  saveDesign: (d) => (ONLINE ? online.saveDesign(d) : api("POST", "/api/designs", d)),
+  saveDesign: (d) => (ONLINE ? online.saveDesign(d) : api("POST", "/api/designs", d)).then(announce),
   deleteDesign: (id) => (ONLINE ? online.deleteDesign(id) : api("DELETE", "/api/designs/" + encodeURIComponent(id))),
   listLibrary: () => (ONLINE ? online.listLibrary() : api("GET", "/api/library")),
   saveLibrary: (t) => (ONLINE ? online.saveLibrary(t) : api("POST", "/api/library", t)).then(announce),
