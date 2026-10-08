@@ -223,8 +223,18 @@ async function draw() {
 }
 
 window.addEventListener("message", (e) => {
-  if (e.source !== window.parent || !e.data || e.data.type !== "crystal-rows") return;
-  show(Array.isArray(e.data.rows) ? e.data.rows : []);
+  if (e.source !== window.parent || !e.data) return;
+  if (e.data.type === "crystal-rows") show(Array.isArray(e.data.rows) ? e.data.rows : []);
+  // the website picked a Jenis Plak (a row of its price table clicked): show that design's tab
+  if (e.data.type === "crystal-select" && typeof e.data.jenis === "string") {
+    const want = e.data.jenis.replace(/\s+/g, " ").trim().toUpperCase();
+    const g = groupRows(allRows).find((x) => x.jenis.toUpperCase() === want);
+    if (!g) return;
+    tab = g.jenis;
+    at = 0;
+    zoom = 1;
+    show(allRows);
+  }
 });
 
 (async () => {

@@ -233,20 +233,27 @@ function logoAndWords(plan, r) {
   const logo = pieces.filter((e) => e.kind !== "text" && w(e) >= r.w * 0.08 && w(e) <= r.w * 0.6 && h(e) <= r.h * 0.4 &&
     Math.abs(cx(e) - r.w / 2) < r.w * 0.15 && cy(e) < r.h * 0.45)
     .sort((a, b) => w(b) * h(b) - w(a) * h(a))[0];
+  // a logo pasted as one picture can touch the artwork around it (a swoosh behind it) and be counted
+  // as part of that: look for the picture itself too
+  const pic = plan.items.filter((it) => !it.path && !it.stroke && it.x1 - it.x0 >= r.w * 0.08 && it.x1 - it.x0 <= r.w * 0.6 &&
+    it.y1 - it.y0 <= r.h * 0.4 && Math.abs(cx(it) - r.w / 2) < r.w * 0.15 && cy(it) < r.h * 0.45 &&
+    it.x0 >= r.x - 1 && it.x1 <= r.x + r.w + 1 && it.y0 >= r.y - 1 && it.y1 <= r.y + r.h + 1)
+    .sort((a, b) => w(b) * h(b) - w(a) * h(a))[0];
   const drop = new Set(logo ? [logo] : []);
-  if (logo) {
+  const extraOps = pic && !(logo && logo.ops.includes(pic.op)) ? [pic.op] : [];
+  for (const L of [logo, pic].filter(Boolean)) {
     // the school's name under the logo: small, within the logo's width, just below it
     for (const e of pieces) {
-      if (e === logo || w(e) * h(e) > w(logo) * h(logo)) continue;
-      const below = e.y0 - logo.y1;
-      if (e.x0 >= logo.x0 - r.w * 0.1 && e.x1 <= logo.x1 + r.w * 0.1 && below >= -h(logo) * 0.1 && below <= h(logo) * 0.35 && h(e) <= h(logo) * 0.4) drop.add(e);
+      if (e === L || w(e) * h(e) > w(L) * h(L)) continue;
+      const below = e.y0 - L.y1;
+      if (e.x0 >= L.x0 - r.w * 0.1 && e.x1 <= L.x1 + r.w * 0.1 && below >= -h(L) * 0.1 && below <= h(L) * 0.35 && h(e) <= h(L) * 0.4) drop.add(e);
     }
   }
   // old words drawn as shapes; small "text" pieces are usually bits of a picture, not words
   const words = els.filter((e) => e.kind === "text" && !drop.has(e) && w(e) >= r.w * 0.2);
   for (const e of words) drop.add(e);
   return {
-    hide: [...drop].flatMap((e) => e.ops),
+    hide: [...[...drop].flatMap((e) => e.ops), ...extraOps],
     outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y })),
   };
 }
