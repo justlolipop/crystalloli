@@ -13,8 +13,8 @@ import { libraryScene, setMaster } from "./library.js";
 import { renderOffscreen } from "./editor.js";
 import { templateFor } from "./jenis.js";
 
-const DPI = 72;       // small pictures: enough to read the words, quick to draw
-const MAX_TILES = 40; // per jenis plak; more distinct rows than this are counted, not drawn
+const DPI = 150;      // sharp enough to zoom in on the words
+const BASE_H = 380;   // the picture's height on the page before zooming (px)
 const TEXT_FIELDS = ["event_header", "year", "position", "event_line_1", "event_line_2", "event_line_3"];
 
 const out = document.getElementById("out");
@@ -36,9 +36,6 @@ setInterval(sendHeight, 1000);
 let library = [];
 let job = 0;
 
-document.getElementById("flip").onchange = (e) => {
-  for (const t of document.querySelectorAll(".tile.mirrored")) t.classList.toggle("flip", e.target.checked);
-};
 
 // one tab per category (like the order's Excel sheets); "" = rows with no category
 function byCategory(rows) {
@@ -74,9 +71,9 @@ function show(rows) {
   allRows = rows || [];
   const cats = byCategory(allRows);
   if (!cats.some(([c]) => c === tab)) tab = cats.length ? cats[0][0] : null;
-  tabs.innerHTML = cats.length > 1 ? cats.map(([c, list]) =>
-    `<button type="button" class="tab${c === tab ? " on" : ""}" data-cat="${esc(c)}">${esc(c || "Other")} <span>${list.length}</span></button>`).join("") : "";
-  tabs.hidden = cats.length < 2;
+  tabs.innerHTML = cats.map(([c, list]) =>
+    `<button type="button" class="tab${c === tab ? " on" : ""}" data-cat="${esc(c)}">${esc(c || "Other")}<span>${list.length}</span></button>`).join("");
+  tabs.hidden = !cats.length;
   showTab(cats.length ? cats.find(([c]) => c === tab)[1] : []);
 }
 
@@ -84,63 +81,107 @@ tabs.onclick = (e) => {
   const b = e.target.closest(".tab");
   if (!b) return;
   tab = b.dataset.cat;
+  at = 0;
+  zoom = 1;
   show(allRows);
 };
 
-async function showTab(rows) {
-  const my = ++job;
-  const groups = groupRows(rows);
-  if (!groups.length) {
-    out.innerHTML = `<p class="msg">This order has no crystal.</p>`;
-    document.getElementById("bar").hidden = true;
-    return;
-  }
-  const columns = [...new Set(allRows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
-  out.innerHTML = groups.map((g, gi) => {
+// One crystal at a time, like the editor: ‹ › go through this tab's crystals (each different set of
+// words on each design; a design not imported yet is one stop too, saying so). Click the picture,
+// or + / −, to zoom.
+let slides = [], at = 0, zoom = 1, columns = [];
+const pics = new Map(); // slide key -> picture (data URL), drawn once
+const ZOOMS = [1, 1.5, 2, 3];
+
+function showTab(rows) {
+  ++job;
+  columns = [...new Set(allRows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
+  slides = groupRows(rows).flatMap((g) => {
     const it = templateFor(library, g.jenis);
     const count = g.tiles.reduce((n, t) => n + t.qty, 0);
-    const sub = it
-      ? `${esc(it.name)} · ${count} keping, ${g.tiles.length} different`
-      : `<span>No Crystal Studio design for this yet — import its .ai in Crystal Studio.</span>`;
-    const tiles = it ? g.tiles.slice(0, MAX_TILES).map((t, ti) =>
-      `<div class="tile" id="t${gi}-${ti}"><div class="pic">…</div><div class="cap"><span class="qty">×${t.qty}</span>${esc(caption(t.row))}</div></div>`).join("") : "";
-    const more = it && g.tiles.length > MAX_TILES ? `<p class="msg">…and ${g.tiles.length - MAX_TILES} more.</p>` : "";
-    const edit = it ? ` <a href="#" class="edit" data-g="${gi}" title="Open this design in Crystal Studio with these rows, to change it and save it as the default">✎ Edit in Crystal Studio</a>` : "";
-    return `<div class="group"><h3>${esc(g.jenis)}${edit}</h3><div class="sub${it ? "" : " warn"}">${sub}</div><div class="tiles">${tiles}</div>${more}</div>`;
-  }).join("");
-
+    return it ? g.tiles.map((t) => ({ g, it, t, count })) : [{ g, it: null, t: null, count }];
+  });
+  at = Math.min(at, Math.max(0, slides.length - 1));
+  if (!slides.length) {
+    out.innerHTML = `<p class="msg">This order has no crystal.</p>`;
+    return;
+  }
+  out.innerHTML = `
+    <div class="vhead"><b id="vJenis"></b> <span id="vSub" class="muted"></span> <a href="#" class="edit" id="vEdit"
+      title="Open this design in Crystal Studio with these rows, to change it and save it as the default">✎ Edit in Crystal Studio</a></div>
+    <div class="vrow">
+      <button type="button" class="nav" id="vPrev" aria-label="Previous crystal">‹</button>
+      <div class="stage" id="vStage"></div>
+      <button type="button" class="nav" id="vNext" aria-label="Next crystal">›</button>
+    </div>
+    <div class="vfoot">
+      <span id="vCap" class="cap"></span>
+      <span class="zoom"><button type="button" id="vOut" aria-label="Zoom out">−</button><span id="vZoom">100%</span><button type="button" id="vIn" aria-label="Zoom in">＋</button></span>
+      <label id="vFlipWrap"><input type="checkbox" id="flip"> Flip to read</label>
+    </div>`;
+  const go = (d) => { at = (at + d + slides.length) % slides.length; zoom = 1; draw(); };
+  document.getElementById("vPrev").onclick = () => go(-1);
+  document.getElementById("vNext").onclick = () => go(1);
+  document.getElementById("vIn").onclick = () => setZoom(1);
+  document.getElementById("vOut").onclick = () => setZoom(-1);
+  document.getElementById("flip").onchange = () => draw();
+  document.getElementById("vStage").onclick = (e) => { if (e.target.tagName === "IMG") setZoom(zoom >= ZOOMS[ZOOMS.length - 1] ? -9 : 1); };
   // ✎ Edit: Crystal Studio opens in a new tab with this design's rows, carried in the link itself
   // (after the #, so they never leave this computer)
-  out.onclick = (e) => {
-    const a = e.target.closest("a.edit");
-    if (!a) return;
+  document.getElementById("vEdit").onclick = (e) => {
     e.preventDefault();
-    const g = groups[+a.dataset.g];
+    const g = slides[at].g;
     window.open("/#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, rows: g.tiles.map((t) => t.row) })), "_blank");
   };
+  draw();
+}
 
-  let mirrored = false;
-  for (const [gi, g] of groups.entries()) {
-    const it = templateFor(library, g.jenis);
-    if (!it) continue;
-    const flipped = (it.texts || []).some((t) => t.flipX);
-    mirrored = mirrored || flipped;
-    for (const [ti, t] of g.tiles.slice(0, MAX_TILES).entries()) {
-      if (my !== job) return; // a newer order arrived
-      const el = document.getElementById(`t${gi}-${ti}`);
-      try {
-        const scene = await libraryScene(it, t.row, columns);
-        const { url } = await renderOffscreen({ scene }, DPI);
-        el.querySelector(".pic").innerHTML = `<img alt="" src="${url}">`;
-        sendHeight();
-        if (flipped) el.classList.add("mirrored");
-        if (flipped && document.getElementById("flip").checked) el.classList.add("flip");
-      } catch (e) {
-        el.querySelector(".pic").textContent = "Couldn't draw this one";
-      }
-    }
+function setZoom(step) {
+  const i = Math.max(0, Math.min(ZOOMS.length - 1, ZOOMS.indexOf(zoom) + step));
+  zoom = ZOOMS[i];
+  draw();
+}
+
+document.addEventListener("keydown", (e) => {
+  if (!slides.length || e.target.tagName === "INPUT") return;
+  if (e.key === "ArrowLeft") document.getElementById("vPrev")?.click();
+  if (e.key === "ArrowRight") document.getElementById("vNext")?.click();
+});
+
+async function draw() {
+  const my = ++job, sl = slides[at];
+  if (!sl) return;
+  const one = slides.length < 2;
+  document.getElementById("vPrev").disabled = one;
+  document.getElementById("vNext").disabled = one;
+  document.getElementById("vJenis").textContent = sl.g.jenis;
+  document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "");
+  document.getElementById("vEdit").hidden = !sl.it;
+  document.getElementById("vCap").textContent = sl.t ? caption(sl.t.row) : "";
+  document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
+  const stage = document.getElementById("vStage");
+  const flipped = !!sl.it && (sl.it.texts || []).some((t) => t.flipX);
+  document.getElementById("vFlipWrap").hidden = !flipped;
+  if (!sl.it) {
+    stage.innerHTML = `<p class="msg warn">No Crystal Studio design for this yet — import its .ai in Crystal Studio.</p>`;
+    sendHeight();
+    return;
   }
-  document.getElementById("bar").hidden = !mirrored;
+  const key = sl.g.jenis + "\u0002" + TEXT_FIELDS.map((f) => sl.t.row[f] || "").join("\u0001");
+  if (!pics.has(key)) {
+    stage.innerHTML = `<p class="msg">Drawing…</p>`;
+    try {
+      const scene = await libraryScene(sl.it, sl.t.row, columns);
+      pics.set(key, (await renderOffscreen({ scene }, DPI)).url);
+    } catch (e) {
+      if (my === job) stage.innerHTML = `<p class="msg warn">Couldn't draw this one.</p>`;
+      return;
+    }
+    if (my !== job) return; // moved on meanwhile
+  }
+  const flip = flipped && document.getElementById("flip").checked;
+  stage.innerHTML = `<img alt="" src="${pics.get(key)}" style="height:${Math.round(BASE_H * zoom)}px${flip ? ";transform:scaleX(-1)" : ""}">`;
+  stage.classList.toggle("zoomed", zoom > 1);
   sendHeight();
 }
 
