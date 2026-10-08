@@ -43,3 +43,19 @@ copied over on purpose.
   deleted and the repo made private, but the **service_role key of the real
   project should be regenerated** in Supabase (Project Settings → API Keys)
   and the new key put wherever the real website uses it.
+
+## 2026-10-08 — Neon dark look (real website: not needed, look only)
+
+A black background with dark-blue neon accents, on the test copy only.
+
+- `src/index.css` — one block added at the very end, from
+  `CRYSTALLOLI: neon dark theme` down to the end of the file. It only gives
+  the existing colour variables new values (the ones in `:root` and the
+  Admin pages' Tailwind `@theme` colours), darkens the few boxes that had a
+  fixed white background (`.card`, `.stat-tile`, inputs, pop-ups…), adds a
+  soft blue glow to buttons, titles and the Admin sidebar, and keeps
+  **printing in the original light colours**. Nothing above the block was
+  changed: delete the block to get the original look back.
+- `src/pages/Dashboard.jsx` line 139 — the order table's inline
+  `background: '#fff'` became `var(--color-surface-card, #fff)` (marked
+  `CRYSTALLOLI:`). Without the theme block it is still white.
