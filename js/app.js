@@ -321,6 +321,11 @@ async function importFiles(files) {
       // importing a file again replaces its old designs, keeping the texts' Excel column links
       const old = S.library.filter((x) => x.file === f.name);
       const kept = keepLinks(tpls, old);
+      // a saved default template (where the 3 master texts sit) stays with the same design
+      for (const t of tpls) {
+        const prev = old.find((o) => (o.order || 0) === (t.order || 0) && o.layout);
+        if (prev) t.layout = prev.layout;
+      }
       const linked = autoLink(tpls);
       for (const t of tpls) {
         const saved = await store.saveLibrary(t);

@@ -204,17 +204,32 @@ class CanvasFactory {
 
 // A design's school logo and its old words drawn as shapes (outlined text), as drawing steps to
 // leave out of its background: the master template puts its own 3 texts on the bare artwork.
-// The logo is the picture nearest the top middle (flowers and corners sit at the sides).
+// The logo is the biggest piece in the top middle (drawn as shapes or pasted as a picture); flowers
+// and corners sit at the sides, the background behind it is far bigger. Small pieces right under
+// it (the school's name) go with it.
 // r: the design's box on the page (pt) -> { hide: [step], outlined: [{ l, t, r, b }] (pt, design) }
 function logoAndWords(plan, r) {
   const els = findElements(plan.items, { x: r.x, y: r.y, w: r.w, h: r.h });
   const cx = (e) => (e.x0 + e.x1) / 2 - r.x, cy = (e) => (e.y0 + e.y1) / 2 - r.y;
-  const logo = els.filter((e) => e.kind === "graphic" && Math.abs(cx(e) - r.w / 2) < r.w * 0.15 && cy(e) < r.h * 0.45)
-    .sort((a, b) => Math.abs(cx(a) - r.w / 2) - Math.abs(cx(b) - r.w / 2))[0];
-  // small "text" pieces are usually bits of a picture, not words
-  const words = els.filter((e) => e.kind === "text" && e.x1 - e.x0 >= r.w * 0.2);
+  const w = (e) => e.x1 - e.x0, h = (e) => e.y1 - e.y0;
+  const pieces = els.filter((e) => e.kind === "graphic" || e.kind === "art" || e.kind === "text");
+  const logo = pieces.filter((e) => e.kind !== "text" && w(e) >= r.w * 0.08 && w(e) <= r.w * 0.6 && h(e) <= r.h * 0.4 &&
+    Math.abs(cx(e) - r.w / 2) < r.w * 0.15 && cy(e) < r.h * 0.45)
+    .sort((a, b) => w(b) * h(b) - w(a) * h(a))[0];
+  const drop = new Set(logo ? [logo] : []);
+  if (logo) {
+    // the school's name under the logo: small, within the logo's width, just below it
+    for (const e of pieces) {
+      if (e === logo || w(e) * h(e) > w(logo) * h(logo)) continue;
+      const below = e.y0 - logo.y1;
+      if (e.x0 >= logo.x0 - r.w * 0.1 && e.x1 <= logo.x1 + r.w * 0.1 && below >= -h(logo) * 0.1 && below <= h(logo) * 0.35 && h(e) <= h(logo) * 0.4) drop.add(e);
+    }
+  }
+  // old words drawn as shapes; small "text" pieces are usually bits of a picture, not words
+  const words = els.filter((e) => e.kind === "text" && !drop.has(e) && w(e) >= r.w * 0.2);
+  for (const e of words) drop.add(e);
   return {
-    hide: [...(logo ? logo.ops : []), ...words.flatMap((e) => e.ops)],
+    hide: [...drop].flatMap((e) => e.ops),
     outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y })),
   };
 }
