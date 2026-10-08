@@ -500,14 +500,17 @@ $("saveDefault").onclick = async () => {
   const layout = { ...(it.layout || {}) }, look = { ...getMaster() };
   for (const o of texts) {
     const f = o.data.field, sy = o.scaleY || 1, size = Math.round(o.fontSize * sy * 100) / 100;
-    let top = o.top;
+    let top = o.top, lines = String(o.text || "").split("\n").length;
     // the name was moved up for this row's extra lines (event_line_2 / 3): save it without them
     if (f === "event_line_1") {
       const extra = fieldValue(row(), f).split("\n").length - String(row().event_line_1 || "").split("\n").length;
-      if (extra > 0) top += (extra * size * (o.lineHeight || 1) * 1.13) / 2;
+      if (extra > 0) { top += (extra * size * (o.lineHeight || 1) * 1.13) / 2; lines -= extra; }
     }
+    // as wide as it is now at least (made bigger by dragging its corner, it must stay that big),
+    // and as many lines: other rows' words only shrink when they're longer or have more lines
+    const wide = (o.getScaledWidth ? o.getScaledWidth() : o.width * (o.scaleX || 1)) * 1.03 + (o.strokeWidth || 0) + 1;
     layout[f] = { left: o.left, top, originX: o.originX, textAlign: o.textAlign, fontSize: size,
-      maxW: o.data.maxW || it.width * 0.9, angle: o.angle || 0, flipX: !!o.flipX };
+      maxW: Math.min(it.width, Math.max(o.data.maxW || 0, wide)), lines: Math.max(1, lines), angle: o.angle || 0, flipX: !!o.flipX };
     const family = String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim();
     look[f] = { ps: o.data.ps || null, family: o.data.ps ? "" : family, bold: o.fontWeight === "bold", italic: o.fontStyle === "italic",
       fill: o.fill, stroke: o.stroke || null, strokeWidth: o.strokeWidth || 0, paintFirst: o.paintFirst || "fill",
