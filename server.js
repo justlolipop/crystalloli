@@ -323,6 +323,8 @@ async function handleNativeRequest(req, res) {
     if (m !== "GET") return send(res, 405, { error: "Method not allowed" });
     if (p.startsWith("/library/")) return sendFile(res, LIBRARY_DIR, p.slice(9));
     if (p === "/" || p === "/index.html") return sendFile(res, APP_DIR, "index.html");
+    // the designs only, for another website to show (see js/preview.js)
+    if (p === "/preview.html") return sendFile(res, APP_DIR, "preview.html");
     if (p === "/app.css" || p.startsWith("/js/")) return sendFile(res, APP_DIR, p.slice(1));
     return send(res, 404, { error: "Not found" });
   } catch (e) {
