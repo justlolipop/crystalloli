@@ -23,8 +23,15 @@ const params = new URLSearchParams(location.search);
 if (params.get("theme") === "dark") document.documentElement.dataset.theme = "dark";
 
 const tell = (msg) => { if (window.parent !== window) window.parent.postMessage(msg, "*"); };
-new ResizeObserver(() => tell({ type: "crystal-studio-height", height: document.documentElement.scrollHeight }))
-  .observe(document.body);
+// the frame grows with this page: told on every size change, after every drawing, and now and then
+// (some browsers pause size watching in a frame that is still 0 high)
+let lastHeight = -1;
+const sendHeight = () => {
+  const h = Math.ceil(document.body.getBoundingClientRect().height) + 8;
+  if (h !== lastHeight) { lastHeight = h; tell({ type: "crystal-studio-height", height: h }); }
+};
+new ResizeObserver(sendHeight).observe(document.body);
+setInterval(sendHeight, 1000);
 
 let library = [];
 let job = 0;
@@ -125,6 +132,7 @@ async function showTab(rows) {
         const scene = await libraryScene(it, t.row, columns);
         const { url } = await renderOffscreen({ scene }, DPI);
         el.querySelector(".pic").innerHTML = `<img alt="" src="${url}">`;
+        sendHeight();
         if (flipped) el.classList.add("mirrored");
         if (flipped && document.getElementById("flip").checked) el.classList.add("flip");
       } catch (e) {
@@ -133,6 +141,7 @@ async function showTab(rows) {
     }
   }
   document.getElementById("bar").hidden = !mirrored;
+  sendHeight();
 }
 
 window.addEventListener("message", (e) => {

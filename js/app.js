@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground } from "./library.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
@@ -477,6 +477,46 @@ $("saveDefault").onclick = async () => {
   markDirty();
   await show(S.row);
   toast(`Saved as the default for ${it.name}. The order website shows it after a refresh.`);
+};
+
+// Remove from background: while on, a click on the design takes the piece of artwork there (the
+// school logo, its name, a leftover word) out of this design's background for good — on every row,
+// in downloads and on the order website. "Put back" brings everything back.
+let erasing = false;
+function setErasing(on) {
+  erasing = on;
+  $("eraseBtn").setAttribute("aria-pressed", on ? "true" : "false");
+  $("eraseBtn").textContent = on ? "Done removing" : "Remove from background";
+  editor.pickPoint(on ? eraseAt : null);
+  if (on) toast("Click the logo (or anything else on the background) to remove it. Click Done removing when finished.");
+}
+async function saveBackground(it, hide, note) {
+  try {
+    const background = await redrawBackground(it, hide);
+    Object.assign(it, await store.saveLibrary({ id: it.id, hide, background }));
+  } catch (e) { return toast(e.message, "bad"); }
+  await show(S.row);
+  if (erasing) editor.pickPoint(eraseAt);
+  toast(note);
+}
+async function eraseAt(x, y) {
+  const it = itemOf(S.key);
+  if (!it || !it.original) return toast("Only designs imported from an .ai can have things removed.", "bad");
+  const ops = await pieceAt(it, x, y).catch(() => null);
+  if (!ops) return toast("Nothing to remove there (the plain background and the cut line stay).");
+  await saveBackground(it, [...new Set([...(it.hide || []), ...ops])], "Removed. Click something else, or Done removing.");
+}
+$("eraseBtn").onclick = () => {
+  const it = itemOf(S.key);
+  if (!erasing && (!it || !it.original)) return toast("Pick a crystal design (.ai) first.", "bad");
+  setErasing(!erasing);
+};
+$("restoreBg").onclick = async () => {
+  const it = itemOf(S.key);
+  if (!it || !it.original) return toast("Pick a crystal design (.ai) first.", "bad");
+  if (!(it.hide || []).length) return toast("Nothing has been taken out of this design.");
+  if (!await ask(`Put back everything taken out of “${it.name}” (the logo too)?`)) return;
+  await saveBackground(it, [], "Everything is back. Use Remove from background to take things out again.");
 };
 
 // ------------------------------------------------------------------ Excel

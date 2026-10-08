@@ -73,6 +73,16 @@ export function setFieldValue(row, field, text) {
 export const MASTER_FIELDS = ["event_header", "position", "event_line_1"];
 const LOOK = ["ps", "family", "bold", "italic", "fill", "stroke", "strokeWidth", "paintFirst", "strokeLineJoin",
   "outerStroke", "outerStrokeWidth", "charSpacing", "lineHeight", "scaleX"];
+// The built-in master look: the fonts of the J&E crystal (header, award, name). "Save as default
+// template" replaces any of them with what was set on the design.
+const DEFAULT_MASTER = {
+  event_header: { ps: "Teko-Bold", family: "Teko", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
+    strokeLineJoin: "round", lineHeight: 0.84, scaleX: 0.95 },
+  position: { ps: "Playball-Regular", family: "Playball", fill: "#2c2e35", stroke: "#2c2e35", strokeWidth: 0.5, paintFirst: "fill",
+    strokeLineJoin: "round", outerStroke: "#ffffff", outerStrokeWidth: 4, lineHeight: 0.92, scaleX: 0.952 },
+  event_line_1: { ps: "BritannicBold", family: "Britannic Bold", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
+    strokeLineJoin: "round", lineHeight: 0.92, scaleX: 0.89 },
+};
 let master = {};
 export function setMaster(m) { master = m && typeof m === "object" ? m : {}; }
 export const getMaster = () => master;
@@ -108,24 +118,31 @@ export function guessLayout(item) {
     const cx = b ? (b.l + b.r) / 2 : W / 2;
     out[f] = {
       cx, top: b ? b.t : H * fallback[i][0], size: b ? b.size : H * fallback[i][1],
-      maxW: 0.92 * 2 * Math.min(cx, W - cx), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
+      // the crystal's shape is narrower than its box: keep to the middle 72%
+      maxW: Math.min(W * 0.72, 0.92 * 2 * Math.min(cx, W - cx)), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
     };
   });
   return out;
 }
 
-// the 3 master texts for one Excel row on this design
+// the 3 master texts for one Excel row on this design. Each shrinks to fit: as wide as the design
+// allows, and no taller than the room down to the next text (the last one: to near the bottom).
 async function masterTexts(item, row) {
   const guess = guessLayout(item), saved = item.layout || {};
+  const tops = MASTER_FIELDS.map((f) => (saved[f] ? saved[f].top : guess[f].top));
   const texts = [];
-  for (const f of MASTER_FIELDS) {
+  for (const [i, f] of MASTER_FIELDS.entries()) {
     const text = fieldValue(row, f);
     if (!text.trim()) continue;
     const g = guess[f], s = saved[f];
-    const look = { family: "Arial", bold: true, fill: "#000000", ...(g.look || {}), ...(master[f] || {}) };
+    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...(master[f] || {}) };
     const css = look.ps ? await useFont(look.ps, look.family, look.style) : `"${look.family}", sans-serif`;
     const base = s ? s.fontSize : g.size, maxW = s ? s.maxW : g.maxW;
-    const size = fitSize(text, css, base, look.charSpacing || 0, look.scaleX || 1, maxW, 4);
+    const below = tops.filter((t, j) => j !== i && t > tops[i] + 1);
+    const room = (below.length ? Math.min(...below) : item.height * 0.92) - tops[i] - item.height * 0.01;
+    const lines = text.split("\n").length, lh = (look.lineHeight || 1) * 1.13;
+    const tall = room > 0 ? room / (lines * lh) : base;
+    const size = Math.max(4, Math.min(fitSize(text, css, base, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
     let top = s ? s.top : g.top;
     // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
     const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
@@ -158,7 +175,7 @@ export async function libraryScene(item, row, columns) {
 
   // .ai / .pdf designs: their artwork (without its logo and old words) + the master template's 3 texts
   const images = item.background
-    ? [{ role: "bg", src: "/" + item.background, left: 0, top: 0, width: item.width, height: item.height }] : [];
+    ? [{ role: "bg", src: "/" + item.background + "?v=" + (item.updated || 0), left: 0, top: 0, width: item.width, height: item.height }] : [];
   return { width: item.width, height: item.height, background: "", images, texts: await masterTexts(item, row) };
 }
 
@@ -708,6 +725,59 @@ function openOriginal(rel) {
     originals.set(rel, pdfjsLib.getDocument({ url: "/" + rel, canvasFactory: factory, disableRange: true, disableStream: true }).promise);
   }
   return originals.get(rel);
+}
+
+// ------------------------------------------------------------------ removing things from a background
+
+// the original .ai page of a design, drawn once (so its drawing steps are known)
+async function designPage(item) {
+  const doc = await openOriginal(item.original);
+  const page = await doc.getPage(item.page || 1);
+  if (!pagePlan(page)) {
+    const c = makeCanvas(8, 8);
+    await page.render({ canvasContext: c.ctx, viewport: page.getViewport({ scale: 8 / Math.max(...page.view) }) }).promise;
+  }
+  return { doc, page };
+}
+
+// the piece of a design's artwork at (x, y) (pt, from the design's top-left): the smallest one there
+// that isn't the whole background or the cut line -> its drawing steps, or null
+export async function pieceAt(item, x, y) {
+  if (!item || !item.original) return null;
+  const { page } = await designPage(item);
+  const plan = pagePlan(page);
+  if (!plan) return null;
+  const [rx, ry, rw, rh] = item.region || [0, 0, item.width, item.height];
+  const px = rx + x, py = ry + y;
+  const hidden = new Set(item.hide || []);
+  const area = (e) => (e.x1 - e.x0) * (e.y1 - e.y0), A = rw * rh;
+  const at = (e) => px >= e.x0 && px <= e.x1 && py >= e.y0 && py <= e.y1;
+  // a piece the size of a logo, not the artwork spread over the whole design (traced flowers and
+  // corners are often one piece covering it all)
+  const hits = findElements(plan.items, { x: rx, y: ry, w: rw, h: rh })
+    .filter((e) => e.kind !== "plate" && e.kind !== "cut" && at(e) && area(e) <= A * 0.3)
+    .filter((e) => e.ops.some((o) => !hidden.has(o)))
+    .sort((a, b) => area(a) - area(b));
+  if (hits[0]) return hits[0].ops;
+  // otherwise just the one shape or picture under the click
+  const one = plan.items.filter((it) => at(it) && !hidden.has(it.op) && area(it) <= A * 0.1).sort((a, b) => area(a) - area(b))[0];
+  return one ? [one.op] : null;
+}
+
+// a design's background drawn again, at screen size, leaving out the steps in hide -> png data URL
+export async function redrawBackground(item, hide) {
+  const { doc, page } = await designPage(item);
+  const vp1 = page.getViewport({ scale: 1 });
+  const S = Math.max(1, Math.min(3, PREVIEW_PX / Math.max(vp1.width, vp1.height)));
+  const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
+  const vp = page.getViewport({ scale: S, offsetX: -x * S, offsetY: -y * S });
+  const c = makeCanvas(Math.max(1, Math.round(w * S)), Math.max(1, Math.round(h * S)));
+  const items = await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true }));
+  await drawBare(page, items, c, vp, hide);
+  const url = c.canvas.toDataURL("image/png");
+  c.canvas.width = c.canvas.height = 0;
+  for (const k of [...hiCache.keys()]) if (k.startsWith(item.id + "|")) hiCache.delete(k);
+  return url;
 }
 
 export function hiResBackground(item, dpi) {
