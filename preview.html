@@ -25,9 +25,15 @@
   .tile .qty { float: right; color: var(--accent); font-weight: 700; }
   .bar { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; color: var(--muted); font-size: 12px; }
   .bar label { cursor: pointer; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 12px; border-bottom: 1px solid var(--line); }
+  .tab { font: inherit; font-size: 12px; font-weight: 600; padding: 6px 12px; border: 1px solid transparent; border-bottom: 0;
+    border-radius: 6px 6px 0 0; background: none; color: var(--muted); cursor: pointer; margin-bottom: -1px; }
+  .tab span { opacity: .7; font-weight: 400; }
+  .tab.on { color: var(--text); background: var(--tile); border-color: var(--line); }
 </style>
 </head>
 <body>
+<div class="tabs" id="tabs" hidden></div>
 <div class="bar" id="bar" hidden><label><input type="checkbox" id="flip"> Flip to read (mirrored designs print back to front)</label></div>
 <div id="out"><p class="msg">Waiting for the order…</p></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/fabric.js/5.3.1/fabric.min.js"></script>

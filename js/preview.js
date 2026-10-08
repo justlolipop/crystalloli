@@ -1,7 +1,8 @@
 // Crystal preview: shown in a frame by another website (the order system's Production page).
 // That page posts { type: "crystal-rows", rows: [{ event_header, position, event_line_1, …,
 // jenis_plak }] }; each row is drawn on the Crystal Studio design its jenis_plak names, with the
-// texts filled from the row, exactly as the editor would. Identical rows are drawn once, with a count.
+// texts filled from the row, exactly as the editor would. Identical rows are drawn once, with a count,
+// and each category (TOKOH, KEHADIRAN PENUH …) gets its own tab, like the sheets of the order's Excel.
 // This page tells the website "crystal-studio-ready" when it can draw, and "crystal-studio-height"
 // whenever its height changes, so the frame can grow to fit.
 
@@ -17,6 +18,7 @@ const MAX_TILES = 40; // per jenis plak; more distinct rows than this are counte
 const TEXT_FIELDS = ["event_header", "year", "position", "event_line_1", "event_line_2", "event_line_3"];
 
 const out = document.getElementById("out");
+const tabs = document.getElementById("tabs");
 const params = new URLSearchParams(location.search);
 if (params.get("theme") === "dark") document.documentElement.dataset.theme = "dark";
 
@@ -30,6 +32,18 @@ let job = 0;
 document.getElementById("flip").onchange = (e) => {
   for (const t of document.querySelectorAll(".tile.mirrored")) t.classList.toggle("flip", e.target.checked);
 };
+
+// one tab per category (like the order's Excel sheets); "" = rows with no category
+function byCategory(rows) {
+  const cats = new Map();
+  for (const row of rows) {
+    if (!/\bCRYSTAL\b/i.test(String(row.jenis_plak || ""))) continue;
+    const c = String(row.category || "").trim();
+    if (!cats.has(c)) cats.set(c, []);
+    cats.get(c).push(row);
+  }
+  return [...cats];
+}
 
 // rows with the same jenis plak, and the same words, are one tile
 function groupRows(rows) {
@@ -47,14 +61,34 @@ function groupRows(rows) {
 
 const caption = (row) => String(row.event_line_1 || row.position || row.event_header || "").replace(/\n/g, " · ");
 
-async function show(rows) {
+let allRows = [], tab = null;
+
+function show(rows) {
+  allRows = rows || [];
+  const cats = byCategory(allRows);
+  if (!cats.some(([c]) => c === tab)) tab = cats.length ? cats[0][0] : null;
+  tabs.innerHTML = cats.length > 1 ? cats.map(([c, list]) =>
+    `<button type="button" class="tab${c === tab ? " on" : ""}" data-cat="${esc(c)}">${esc(c || "Other")} <span>${list.length}</span></button>`).join("") : "";
+  tabs.hidden = cats.length < 2;
+  showTab(cats.length ? cats.find(([c]) => c === tab)[1] : []);
+}
+
+tabs.onclick = (e) => {
+  const b = e.target.closest(".tab");
+  if (!b) return;
+  tab = b.dataset.cat;
+  show(allRows);
+};
+
+async function showTab(rows) {
   const my = ++job;
-  const groups = groupRows(rows || []);
+  const groups = groupRows(rows);
   if (!groups.length) {
     out.innerHTML = `<p class="msg">This order has no crystal.</p>`;
+    document.getElementById("bar").hidden = true;
     return;
   }
-  const columns = [...new Set(rows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
+  const columns = [...new Set(allRows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
   out.innerHTML = groups.map((g, gi) => {
     const it = templateFor(library, g.jenis);
     const count = g.tiles.reduce((n, t) => n + t.qty, 0);
@@ -81,6 +115,7 @@ async function show(rows) {
         const { url } = await renderOffscreen({ scene }, DPI);
         el.querySelector(".pic").innerHTML = `<img alt="" src="${url}">`;
         if (flipped) el.classList.add("mirrored");
+        if (flipped && document.getElementById("flip").checked) el.classList.add("flip");
       } catch (e) {
         el.querySelector(".pic").textContent = "Couldn't draw this one";
       }
