@@ -15,7 +15,9 @@
 .elrow .x{border:0;background:none;cursor:pointer;font-size:16px;color:inherit}
 .colsbox{margin-top:8px}
 .tplnow{margin:0 0 8px}
-.sources .src{cursor:default}
+.sources .src{cursor:pointer}
+.sources .src.on{border-color:var(--acc2,var(--acc));box-shadow:0 0 8px rgba(166,77,255,.35)}
+.srcdesigns{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
 .sources .src .x{border:0;background:none;cursor:pointer;color:inherit;font-size:14px;padding:0 0 0 4px}
 
 /* the Excel, columns A–F; one line per different crystal */
@@ -166,6 +168,7 @@
     </div>
     <p class="tplnow" id="tplNow"></p>
     <div class="sources" id="sources" aria-label="Imported template files"></div>
+    <div class="srcdesigns" id="srcDesigns" hidden aria-label="Designs in this file"></div>
   </section>
 </div>
 
