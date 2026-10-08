@@ -6,4 +6,4 @@
 // The key here is the project's PUBLISHABLE (anon) key: it is meant to be in web pages.
 // Never put the secret / service_role key here; the page refuses it.
 export const SUPABASE_URL = "https://ddjgmuvgxywzvhzhrbta.supabase.co"; // the TEST project
-export const SUPABASE_KEY = "";
+export const SUPABASE_KEY = "sb_publishable_YoJRrnXu4MTEyj5jiP0Kow_2Z2RlElm";
