@@ -155,7 +155,7 @@ export function makeText(t) {
     fill: t.fill || "#000000", stroke: t.stroke || null, strokeWidth: t.stroke ? t.strokeWidth || 0.2 : 0,
     paintFirst: t.paintFirst || "fill", strokeLineJoin: t.strokeLineJoin || "miter",
     outerStroke: t.outerStroke || null, outerStrokeWidth: t.outerStroke ? t.outerStrokeWidth || 0 : 0,
-    charSpacing: t.charSpacing || 0, lineHeight: t.lineHeight || 1, scaleX: t.scaleX || 1, scaleY: t.scaleY || 1, angle: t.angle || 0,
+    charSpacing: t.charSpacing || 0, lineHeight: t.lineHeight || 1, scaleX: t.scaleX || 1, scaleY: t.scaleY || 1, angle: t.angle || 0, flipX: !!t.flipX,
     data: {
       role: "text", field: t.field || null, ps: t.ps || null, frame: t.frame || null, src: t.src ?? null, tplText: t.tplText || null,
       defLeft: t.left, defTop: t.top, vs: t.scaleY || 1, maxW: t.maxW || null,
