@@ -69,6 +69,12 @@ export function initEditor(hooks) {
   });
   cv.on("object:moving", snap);
   cv.on("mouse:up", () => { if (ed.guides.length) { ed.guides = []; cv.requestRenderAll(); } });
+  // picking a spot on the design (see pickPoint): reported in pt from its top-left
+  cv.on("mouse:down", (e) => {
+    if (!ed.pick) return;
+    const p = cv.getPointer(e.e);
+    ed.pick(p.x, p.y);
+  });
   cv.on("after:render", drawGuides);
   wireToolbar();
   wireKeys();
@@ -425,6 +431,16 @@ export async function layoutLike(scene) {
   const json = strip(sc.toJSON(PROPS));
   sc.dispose();
   return { w: scene.width, h: scene.height, json };
+}
+
+// While fn is set, a click on the design calls fn(x, y) instead of selecting anything; null stops.
+export function pickPoint(fn) {
+  ed.pick = fn || null;
+  cv.discardActiveObject();
+  cv.selection = !fn;
+  cv.defaultCursor = fn ? "crosshair" : "default";
+  cv.forEachObject((o) => { if (!isTemplateImage(o)) o.evented = !fn; });
+  cv.requestRenderAll();
 }
 
 // ------------------------------------------------------------------ zoom

@@ -73,6 +73,7 @@
       <div class="spacer"></div>
       <button id="resetRow" title="Throw away your changes on this crystal">Reset</button>
       <button id="applyAll" title="Copy positions, fonts and extra elements from this row to every row that uses the same design">Apply layout to all</button>
+      <button id="saveDefault" class="primary" title="Keep where the header, position and name sit on this design, for every row and for the order website; their font, colour and outline become the master for every design">Save as default template</button>
     </div>
     <p class="meta" id="meta"></p>
     <p id="warn" class="warn" role="status"></p>
@@ -83,15 +84,9 @@
      <div class="tb-row">
       <div class="tg">
         <button id="addText">＋ Text</button>
-        <div class="menu">
-          <button aria-haspopup="true" aria-expanded="false">＋ Shape ▾</button>
-          <div class="menu-list" role="menu">
-            <button data-shape="rect" role="menuitem">Rectangle</button>
-            <button data-shape="circle" role="menuitem">Circle</button>
-            <button data-shape="line" role="menuitem">Line</button>
-          </div>
-        </div>
         <label class="btn">＋ Image<input type="file" id="addImage" accept="image/*"></label>
+        <button id="eraseBtn" aria-pressed="false" title="Then click the school logo, or anything else on the design's background, to take it out of this design for good">Remove from background</button>
+        <button id="restoreBg" title="Put back everything taken out of this design's background (the logo too)">Put back</button>
       </div>
       <div class="spacer"></div>
       <div class="tg">

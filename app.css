@@ -1,21 +1,9 @@
+/* Neon dark: deep navy-black, electric blue and purple */
 :root {
-  --bg: #eef1f3; --panel: #ffffff; --ink: #1c2b33; --mute: #5d6e78; --line: #d3dadf;
-  --acc: #0b6e72; --accfg: #ffffff; --accsoft: #e2f2f2; --warn: #9a5b00; --bad: #b42318;
-  --stage: #dfe4e8; --shadow: 0 2px 14px rgba(16, 36, 43, 0.18);
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --bg: #12191d; --panel: #1b262c; --ink: #e6edf0; --mute: #93a4ad; --line: #2f3d45;
-    --acc: #4cc2c6; --accfg: #08282a; --accsoft: #173a3d; --warn: #e8b45a; --bad: #ff8a80;
-    --stage: #0d1417; --shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --bg: #12191d; --panel: #1b262c; --ink: #e6edf0; --mute: #93a4ad; --line: #2f3d45;
-  --acc: #4cc2c6; --accfg: #08282a; --accsoft: #173a3d; --warn: #e8b45a; --bad: #ff8a80;
-  --stage: #0d1417; --shadow: 0 2px 14px rgba(0, 0, 0, 0.5);
+  --bg: #070912; --panel: #0e1224; --ink: #e6e9ff; --mute: #8f97c4; --line: #252c55;
+  --acc: #3d8bff; --acc2: #a64dff; --accfg: #ffffff; --accsoft: #1a1f4a; --warn: #f5b85a; --bad: #ff6b8a;
+  --stage: #05070e; --shadow: 0 2px 18px rgba(61, 139, 255, 0.18);
+  --glow: 0 0 12px rgba(61, 139, 255, 0.55), 0 0 22px rgba(166, 77, 255, 0.3);
   color-scheme: dark;
 }
 
@@ -215,3 +203,23 @@ input.path {
   .tcard .thumb { height: 96px; }
   .toolbar { position: static; }
 }
+
+/* neon touches */
+body {
+  background:
+    radial-gradient(900px 500px at 0% -10%, rgba(61, 139, 255, 0.16), transparent 60%),
+    radial-gradient(900px 500px at 100% 0%, rgba(166, 77, 255, 0.14), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+.panel { border-color: var(--line); box-shadow: 0 0 0 1px rgba(61, 139, 255, 0.06), 0 6px 28px rgba(0, 0, 0, 0.45); }
+.panel-head h2 { color: #9fb4ff; text-shadow: 0 0 8px rgba(61, 139, 255, 0.45); }
+button.primary, button[aria-pressed="true"] {
+  background: linear-gradient(135deg, var(--acc), var(--acc2)); border-color: transparent; box-shadow: var(--glow);
+}
+button:hover:not(:disabled), label.btn:hover, select:hover { border-color: var(--acc2); box-shadow: 0 0 8px rgba(166, 77, 255, 0.35); }
+.brand { text-shadow: 0 0 10px rgba(61, 139, 255, 0.6); }
+.brand .mark { background: linear-gradient(135deg, var(--acc), var(--acc2)); box-shadow: var(--glow); }
+.chip.sel, .tcard[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--acc2) inset, 0 0 12px rgba(166, 77, 255, 0.35); }
+#stageWrap { box-shadow: inset 0 0 0 1px var(--line); }
+::selection { background: rgba(166, 77, 255, 0.45); }

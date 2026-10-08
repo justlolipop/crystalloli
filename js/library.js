@@ -1,20 +1,21 @@
 // Crystal templates imported from a file — no Illustrator needed.
 //   .ai / .pdf  Each artboard is read. When an artboard holds several designs side by side
-//               (Design A, B, C …), each one becomes its own template. The artwork becomes the
-//               design's locked picture and every piece of live text becomes its own editable text,
-//               in the same font, size, colour and place. (Text converted to outlines in Illustrator
-//               stays part of the picture.) The original file is kept so downloads can redraw the
-//               artwork at full print resolution.
-//   .svg        Everything stays editable: shapes, lines and text.
-// Text typed as {{column}} in Illustrator, or text that matches an Excel column name, fills in from
-// the Excel row; any other text can be linked to a column by hand, and stays linked.
+//               (Design A, B, C …), each one becomes its own template. Its artwork becomes the
+//               design's locked picture, without the school logo and without its old words (live
+//               text, or text converted to outlines). On it go the master template's 3 texts —
+//               header, position and name — filled from the Excel row, in the master's fonts and
+//               where the design's own words were (or where its saved default puts them).
+//               The original file is kept so downloads can redraw the artwork at full print
+//               resolution.
+//   .svg        Everything stays editable: shapes, lines and text. Text typed as {{column}} in
+//               Illustrator, or text that matches an Excel column name, fills in from the Excel row.
 
 import { loose } from "./util.js";
 import { useFont, findFont } from "./fonts.js";
 import { fitSize } from "./measure.js";
-import { store } from "./store.js";
+import { store, fileUrl } from "./store.js";
 import { visibleTextItems, readableText, withoutLiveText } from "./pdf.js";
-import { pagePlan, drawOnly, serial } from "./elements.js";
+import { pagePlan, drawOnly, serial, findElements } from "./elements.js";
 
 const PDF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/g;
@@ -63,6 +64,101 @@ export function setFieldValue(row, field, text) {
   more.forEach((f, i) => { row[f] = lines[keep + i] || ""; });
 }
 
+// ------------------------------------------------------------------ the master template
+// Every crystal design shows the same 3 texts: the event's header, the award (position) and the
+// name (event_line_1, with event_line_2 / 3 as more lines). Their look (font, colour, outline) is
+// the master's, shared by all designs; where they sit and how big comes from the design: from
+// where its own .ai had its words (guessLayout), until a layout is saved for it in the editor.
+
+export const MASTER_FIELDS = ["event_header", "position", "event_line_1"];
+const LOOK = ["ps", "family", "bold", "italic", "fill", "stroke", "strokeWidth", "paintFirst", "strokeLineJoin",
+  "outerStroke", "outerStrokeWidth", "charSpacing", "lineHeight", "scaleX"];
+// The built-in master look: the fonts of the J&E crystal (header, award, name). "Save as default
+// template" replaces any of them with what was set on the design.
+const DEFAULT_MASTER = {
+  event_header: { ps: "Teko-Bold", family: "Teko", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
+    strokeLineJoin: "round", lineHeight: 0.84, scaleX: 0.95 },
+  position: { ps: "Playball-Regular", family: "Playball", fill: "#2c2e35", stroke: "#2c2e35", strokeWidth: 0.5, paintFirst: "fill",
+    strokeLineJoin: "round", outerStroke: "#ffffff", outerStrokeWidth: 4, lineHeight: 0.92, scaleX: 0.952 },
+  event_line_1: { ps: "BritannicBold", family: "Britannic Bold", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
+    strokeLineJoin: "round", lineHeight: 0.92, scaleX: 0.89 },
+};
+let master = {};
+export function setMaster(m) { master = m && typeof m === "object" ? m : {}; }
+export const getMaster = () => master;
+export const lookOf = (t) => Object.fromEntries(LOOK.filter((k) => t[k] !== undefined && t[k] !== null).map((k) => [k, t[k]]));
+
+// a design's own words (live text, and old words drawn as shapes) as boxes in pt, top to bottom
+function wordBoxes(item) {
+  const W = item.width;
+  const boxes = (item.texts || []).filter((t) => !t.angle && String(t.text).trim()).map((t) => {
+    const lines = String(t.text).split("\n");
+    const size = t.fontSize, lh = size * (t.lineHeight || 1) * 1.13;
+    const w = Math.min(t.maxW || W, Math.max(...lines.map((l) => l.length)) * size * 0.55 * (t.scaleX || 1));
+    const l = t.originX === "center" ? t.left - w / 2 : t.originX === "right" ? t.left - w : t.left;
+    return { l, r: l + w, t: t.top, b: t.top + lh * lines.length, size, text: t };
+  });
+  for (const o of item.outlined || []) boxes.push({ l: o.l, r: o.r, t: o.t, b: o.b, size: Math.min(o.b - o.t, item.height * 0.08), text: null });
+  return boxes.sort((a, b) => a.t - b.t);
+}
+
+// where the 3 texts go on this design, guessed from its own words: the top one is the header, the
+// bottom one the name, the biggest one between them the position. -> { field: { cx, top, size, maxW, flipX, look } }
+export function guessLayout(item) {
+  const W = item.width, H = item.height, bs = wordBoxes(item);
+  let pick;
+  if (bs.length >= 3) pick = [bs[0], bs.slice(1, -1).reduce((a, b) => (b.size > a.size ? b : a)), bs[bs.length - 1]];
+  else if (bs.length === 2) pick = [bs[0], null, bs[1]];
+  else pick = [bs[0] || null, null, null];
+  const mirrored = (item.texts || []).some((t) => t.flipX);
+  const fallback = [[0.3, 0.05], [0.5, 0.07], [0.72, 0.05]]; // top, size (share of the height)
+  const out = {};
+  MASTER_FIELDS.forEach((f, i) => {
+    const b = pick[i];
+    const cx = b ? (b.l + b.r) / 2 : W / 2;
+    out[f] = {
+      cx, top: b ? b.t : H * fallback[i][0], size: b ? b.size : H * fallback[i][1],
+      // the crystal's shape is narrower than its box, and the words shouldn't touch its edge or the
+      // artwork at the sides: keep to the middle 60%
+      maxW: Math.min(W * 0.6, 0.8 * 2 * Math.min(cx, W - cx)), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
+    };
+  });
+  return out;
+}
+
+// the 3 master texts for one Excel row on this design. Each shrinks to fit: as wide as the design
+// allows, and no taller than the room down to the next text (the last one: to near the bottom).
+async function masterTexts(item, row) {
+  const guess = guessLayout(item), saved = item.layout || {};
+  const tops = MASTER_FIELDS.map((f) => (saved[f] ? saved[f].top : guess[f].top));
+  const texts = [];
+  for (const [i, f] of MASTER_FIELDS.entries()) {
+    const text = fieldValue(row, f);
+    if (!text.trim()) continue;
+    const g = guess[f], s = saved[f];
+    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...(master[f] || {}) };
+    const css = look.ps ? await useFont(look.ps, look.family, look.style) : `"${look.family}", sans-serif`;
+    const base = s ? s.fontSize : g.size, maxW = s ? s.maxW : g.maxW;
+    const below = tops.filter((t, j) => j !== i && t > tops[i] + 1);
+    const room = (below.length ? Math.min(...below) : item.height * 0.92) - tops[i] - item.height * 0.01;
+    const lines = text.split("\n").length, lh = (look.lineHeight || 1) * 1.13;
+    const tall = room > 0 ? room / (lines * lh) : base;
+    const size = Math.max(4, Math.min(fitSize(text, css, base, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
+    let top = s ? s.top : g.top;
+    // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
+    const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
+    if (extra > 0) top -= (extra * size * (look.lineHeight || 1) * 1.13) / 2;
+    const real = css.startsWith("ps_");
+    texts.push({
+      ...look, text, css, field: f, src: "m:" + f, tplText: null, top, fontSize: size, maxW,
+      left: s ? s.left : g.cx, originX: s ? s.originX : "center", textAlign: s ? s.textAlign : "center",
+      angle: s ? s.angle || 0 : 0, flipX: s ? !!s.flipX : g.flipX, scaleY: 1,
+      fontWeight: !real && look.bold ? "bold" : "normal", fontStyle: !real && look.italic ? "italic" : "normal",
+    });
+  }
+  return texts;
+}
+
 // ------------------------------------------------------------------ scene for one Excel row
 
 export async function libraryScene(item, row, columns) {
@@ -78,28 +174,10 @@ export async function libraryScene(item, row, columns) {
     return { type: "svg", svg: item.svg, width: item.width, height: item.height, background: "", row, columns, fontMap };
   }
 
-  const texts = [];
-  for (const [i, t] of (item.texts || []).entries()) {
-    const css = t.ps ? await useFont(t.ps, t.family, t.style) : t.family ? `"${t.family}", sans-serif` : "Arial";
-    const hasPh = /\{\{[^{}]+\}\}/.test(t.text);
-    const field = t.field || fieldFromText(t.text, columns);
-    let text = t.text, top = t.top;
-    if (hasPh) text = fillPlaceholders(t.text, row, columns);
-    else if (fieldValue(row, field).trim()) text = fieldValue(row, field);
-    if (!String(text).trim()) continue;
-    const size = text === t.text ? t.fontSize : fitSize(text, css, t.fontSize, t.charSpacing, t.scaleX, t.maxW, 4);
-    // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
-    const extra = field === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
-    if (extra > 0) top -= (extra * size * (t.lineHeight || 1) * 1.13) / 2;
-    const real = css.startsWith("ps_");
-    texts.push({
-      ...t, text, top, css, field, fontSize: size, src: i, tplText: hasPh ? t.text : null,
-      fontWeight: !real && t.bold ? "bold" : "normal", fontStyle: !real && t.italic ? "italic" : "normal",
-    });
-  }
+  // .ai / .pdf designs: their artwork (without its logo and old words) + the master template's 3 texts
   const images = item.background
-    ? [{ role: "bg", src: "/" + item.background, left: 0, top: 0, width: item.width, height: item.height }] : [];
-  return { width: item.width, height: item.height, background: "", images, texts };
+    ? [{ role: "bg", src: fileUrl(item.background) + "?v=" + (item.updated || 0), left: 0, top: 0, width: item.width, height: item.height }] : [];
+  return { width: item.width, height: item.height, background: "", images, texts: await masterTexts(item, row) };
 }
 
 // ------------------------------------------------------------------ import
@@ -142,12 +220,52 @@ class CanvasFactory {
   destroy(cc) { cc.canvas.width = 0; cc.canvas.height = 0; cc.canvas = null; cc.context = null; }
 }
 
+// A design's school logo and its old words drawn as shapes (outlined text), as drawing steps to
+// leave out of its background: the master template puts its own 3 texts on the bare artwork.
+// The logo is the biggest piece in the top middle (drawn as shapes or pasted as a picture); flowers
+// and corners sit at the sides, the background behind it is far bigger. Small pieces right under
+// it (the school's name) go with it.
+// r: the design's box on the page (pt) -> { hide: [step], outlined: [{ l, t, r, b }] (pt, design) }
+function logoAndWords(plan, r) {
+  const els = findElements(plan.items, { x: r.x, y: r.y, w: r.w, h: r.h });
+  const cx = (e) => (e.x0 + e.x1) / 2 - r.x, cy = (e) => (e.y0 + e.y1) / 2 - r.y;
+  const w = (e) => e.x1 - e.x0, h = (e) => e.y1 - e.y0;
+  const pieces = els.filter((e) => e.kind === "graphic" || e.kind === "art" || e.kind === "text");
+  const logo = pieces.filter((e) => e.kind !== "text" && w(e) >= r.w * 0.08 && w(e) <= r.w * 0.6 && h(e) <= r.h * 0.4 &&
+    Math.abs(cx(e) - r.w / 2) < r.w * 0.15 && cy(e) < r.h * 0.45)
+    .sort((a, b) => w(b) * h(b) - w(a) * h(a))[0];
+  // a logo pasted as one picture can touch the artwork around it (a swoosh behind it) and be counted
+  // as part of that: look for the picture itself too
+  const pic = plan.items.filter((it) => !it.path && !it.stroke && it.x1 - it.x0 >= r.w * 0.08 && it.x1 - it.x0 <= r.w * 0.6 &&
+    it.y1 - it.y0 <= r.h * 0.4 && Math.abs(cx(it) - r.w / 2) < r.w * 0.15 && cy(it) < r.h * 0.45 &&
+    it.x0 >= r.x - 1 && it.x1 <= r.x + r.w + 1 && it.y0 >= r.y - 1 && it.y1 <= r.y + r.h + 1)
+    .sort((a, b) => w(b) * h(b) - w(a) * h(a))[0];
+  const drop = new Set(logo ? [logo] : []);
+  const extraOps = pic && !(logo && logo.ops.includes(pic.op)) ? [pic.op] : [];
+  for (const L of [logo, pic].filter(Boolean)) {
+    // the school's name under the logo: small, within the logo's width, just below it
+    for (const e of pieces) {
+      if (e === L || w(e) * h(e) > w(L) * h(L)) continue;
+      const below = e.y0 - L.y1;
+      if (e.x0 >= L.x0 - r.w * 0.1 && e.x1 <= L.x1 + r.w * 0.1 && below >= -h(L) * 0.1 && below <= h(L) * 0.35 && h(e) <= h(L) * 0.4) drop.add(e);
+    }
+  }
+  // old words drawn as shapes; small "text" pieces are usually bits of a picture, not words
+  const words = els.filter((e) => e.kind === "text" && !drop.has(e) && w(e) >= r.w * 0.2);
+  for (const e of words) drop.add(e);
+  return {
+    hide: [...[...drop].flatMap((e) => e.ops), ...extraOps],
+    outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y })),
+  };
+}
+
 // The artwork without its live text. Text with an outline or shadow made in Illustrator usually
 // has a copy of its letters drawn as shapes right behind it; hiding only the live letters left that
 // copy as a white "ghost" of the words. So shapes that sit inside a live text's box are left out too.
+// hide: more drawing steps to leave out (a design's logo and old outlined words, see logoAndWords).
 // Returns { without: runs another drawing of this page with those shapes left out as well,
 //           ghosts: the shapes left out (their box in pt, colour, line width) }
-async function drawBare(page, textItems, c, vp) {
+async function drawBare(page, textItems, c, vp, hide = []) {
   const draw = () => {
     c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height);
     return withoutLiveText(page, () => page.render({ canvasContext: withoutText(c.ctx), viewport: vp, background: CLEAR }).promise);
@@ -166,8 +284,9 @@ async function drawBare(page, textItems, c, vp) {
     });
   };
   const ghosts = plan.items.filter(inText);
-  if (!ghosts.length) return asIs;
-  const keep = plan.items.filter((it) => !inText(it)).map((it) => it.op);
+  if (!ghosts.length && !hide.length) return asIs;
+  const hidden = new Set(hide);
+  const keep = plan.items.filter((it) => !inText(it) && !hidden.has(it.op)).map((it) => it.op);
   const without = (fn) => serial(() => drawOnly(plan, keep, fn));
   await without(draw);
   return { without, ghosts };
@@ -251,7 +370,14 @@ async function importPdf(file, progress) {
     throw new Error("Couldn't open it (" + e.message + ").");
   }
   progress && progress(`Keeping a copy of ${file.name} for full-quality downloads…`);
-  const { path: original } = await store.saveOriginal(file.name, bytes);
+  // too big to keep online: the design still imports (its logo is taken out now), but full-quality
+  // downloads use the screen picture and "Remove from background" can't be used on it later
+  let original = null, keepWarning = "";
+  try { ({ path: original } = await store.saveOriginal(file.name, bytes)); } catch (e) {
+    if (!store.online) throw e;
+    progress && progress(`Couldn't keep a copy of ${file.name}: ${e.message}`);
+    keepWarning = `${file.name}: ${e.message} It's imported, but full-quality downloads and Remove from background won't work for it.`;
+  }
   const base = file.name.replace(/\.(ai|pdf)$/i, "");
   const out = [];
   for (let n = 1; n <= doc.numPages; n++) {
@@ -282,6 +408,11 @@ async function importPdf(file, progress) {
 
     const regions = findDesigns(bareData, W, H, S, pageW, pageH);
     const parts = regions.length ? regions : [{ x: 0, y: 0, w: pageW, h: pageH }];
+    // master template: each design keeps only its artwork; its logo and old outlined words go
+    const plan = pagePlan(page);
+    const cleared = parts.map((r) => (plan ? logoAndWords(plan, r) : { hide: [], outlined: [] }));
+    const hideAll = cleared.flatMap((c) => c.hide);
+    if (hideAll.length) await drawBare(page, tc.items, bare, vp, hideAll);
     const inside = (b, r) => b.cx >= r.x && b.cx <= r.x + r.w && b.cy >= r.y && b.cy <= r.y + r.h;
     const outside = regions.length ? blocks.filter((b) => !regions.some((r) => inside(b, r))) : [];
     const usedLabels = new Set();
@@ -303,10 +434,12 @@ async function importPdf(file, progress) {
         file: file.name, page: n, order: out.length, source: "pdf", width: r.w, height: r.h, region: [r.x, r.y, r.w, r.h], original,
         background: regions.length ? crop(bare.canvas, r, S) : bare.canvas.toDataURL("image/png"),
         texts: blocks.filter((b) => !regions.length || inside(b, r)).map((b) => finishText(b, r)),
+        hide: cleared[i].hide, outlined: cleared[i].outlined, cleaned: CLEAN_VERSION,
       });
     });
     bare.canvas.width = bare.canvas.height = 0;
   }
+  if (keepWarning) out.warning = keepWarning;
   return out;
 }
 
@@ -605,9 +738,90 @@ function openOriginal(rel) {
     pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
     const factory = new CanvasFactory();
     factory.hideText = true;
-    originals.set(rel, pdfjsLib.getDocument({ url: "/" + rel, canvasFactory: factory, disableRange: true, disableStream: true }).promise);
+    originals.set(rel, pdfjsLib.getDocument({ url: fileUrl(rel), canvasFactory: factory, disableRange: true, disableStream: true }).promise);
   }
   return originals.get(rel);
+}
+
+// ------------------------------------------------------------------ removing things from a background
+
+// the original .ai page of a design, drawn once (so its drawing steps are known)
+async function designPage(item) {
+  const doc = await openOriginal(item.original);
+  const page = await doc.getPage(item.page || 1);
+  if (!pagePlan(page)) {
+    const c = makeCanvas(8, 8);
+    await page.render({ canvasContext: c.ctx, viewport: page.getViewport({ scale: 8 / Math.max(...page.view) }) }).promise;
+  }
+  return { doc, page };
+}
+
+// the piece of a design's artwork at (x, y) (pt, from the design's top-left): the smallest one there
+// that isn't the whole background or the cut line -> its drawing steps, or null
+export async function pieceAt(item, x, y) {
+  if (!item || !item.original) return null;
+  const { page } = await designPage(item);
+  const plan = pagePlan(page);
+  if (!plan) return null;
+  const [rx, ry, rw, rh] = item.region || [0, 0, item.width, item.height];
+  const px = rx + x, py = ry + y;
+  const hidden = new Set(item.hide || []);
+  const area = (e) => (e.x1 - e.x0) * (e.y1 - e.y0), A = rw * rh;
+  const at = (e) => px >= e.x0 && px <= e.x1 && py >= e.y0 && py <= e.y1;
+  // a piece the size of a logo, not the artwork spread over the whole design (traced flowers and
+  // corners are often one piece covering it all)
+  const hits = findElements(plan.items, { x: rx, y: ry, w: rw, h: rh })
+    .filter((e) => e.kind !== "plate" && e.kind !== "cut" && at(e) && area(e) <= A * 0.3)
+    .filter((e) => e.ops.some((o) => !hidden.has(o)))
+    .sort((a, b) => area(a) - area(b));
+  if (hits[0]) return hits[0].ops;
+  // otherwise just the one shape or picture under the click
+  const one = plan.items.filter((it) => at(it) && !hidden.has(it.op) && area(it) <= A * 0.1).sort((a, b) => area(a) - area(b))[0];
+  return one ? [one.op] : null;
+}
+
+// Designs imported before the logo was taken out automatically (or before it found logos pasted as
+// a picture) still have it: they get the same clean-up once, without importing them again. What was
+// removed by hand stays removed; "Put back" afterwards isn't undone (cleaned marks it as done).
+// -> the changes to save ({ id, cleaned, hide, outlined, background? }), or null when already done
+export const CLEAN_VERSION = 1;
+export async function autoClean(item) {
+  if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
+  const { page } = await designPage(item);
+  const plan = pagePlan(page);
+  const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
+  const found = plan ? logoAndWords(plan, { x, y, w, h }) : { hide: [], outlined: [] };
+  const had = item.hide || [], hide = [...new Set([...had, ...found.hide])];
+  const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: (item.outlined || []).length ? item.outlined : found.outlined };
+  if (hide.length !== had.length) out.background = await redrawBackground(item, hide);
+  return out;
+}
+// every design in the library that needs it, saved -> how many were cleaned
+export async function autoCleanAll(library, save) {
+  let n = 0;
+  for (const [i, it] of library.entries()) {
+    try {
+      const u = await autoClean(it);
+      if (u) { library[i] = Object.assign(it, await save(u)); n++; }
+    } catch (e) { /* this one stays as it is; tried again next time */ }
+  }
+  return n;
+}
+
+// a design's background drawn again, at screen size, leaving out the steps in hide -> png data URL
+export async function redrawBackground(item, hide) {
+  const { doc, page } = await designPage(item);
+  const vp1 = page.getViewport({ scale: 1 });
+  const S = Math.max(1, Math.min(3, PREVIEW_PX / Math.max(vp1.width, vp1.height)));
+  const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
+  const vp = page.getViewport({ scale: S, offsetX: -x * S, offsetY: -y * S });
+  const c = makeCanvas(Math.max(1, Math.round(w * S)), Math.max(1, Math.round(h * S)));
+  const items = await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true }));
+  await drawBare(page, items, c, vp, hide);
+  const url = c.canvas.toDataURL("image/png");
+  c.canvas.width = c.canvas.height = 0;
+  for (const k of [...hiCache.keys()]) if (k.startsWith(item.id + "|")) hiCache.delete(k);
+  return url;
 }
 
 export function hiResBackground(item, dpi) {
@@ -623,7 +837,7 @@ export function hiResBackground(item, dpi) {
         const vp = page.getViewport({ scale: k, offsetX: -x * k, offsetY: -y * k });
         const c = makeCanvas(Math.round(w * k), Math.round(h * k));
         const items = await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true }));
-        await drawBare(page, items, c, vp);
+        await drawBare(page, items, c, vp, item.hide || []);
         const url = c.canvas.toDataURL("image/png");
         c.canvas.width = c.canvas.height = 0;
         return url;

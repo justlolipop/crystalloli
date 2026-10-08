@@ -1,6 +1,10 @@
 # Your own data stays on this PC (school names, students, big .ai copies)
 designs/
 library/
+master.json
 studio.config.json
 node_modules/
 output/
+
+# font files for upload-online.js (fonts can be licensed: keep them off GitHub)
+webfonts/

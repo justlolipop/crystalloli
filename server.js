@@ -22,6 +22,7 @@ import http from 'http';
 import { fileURLToPath } from 'url';
 import { spawn } from 'child_process';
 import { illustratorScript } from './js/illustrator.js';
+import { mergeItem, designMeta, ID_RE, newId } from './js/libitem.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -34,10 +35,10 @@ const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, "studio.config.json");
 const DESIGNS_DIR = path.join(APP_DIR, "designs");
 const LIBRARY_DIR = path.join(APP_DIR, "library");
+const MASTER_FILE = path.join(APP_DIR, "master.json");
 const OUTPUT_DIR = path.join(APP_DIR, "output"); // .ai files made in Illustrator, one folder per run
 for (const d of [DESIGNS_DIR, LIBRARY_DIR]) fs.mkdirSync(d, { recursive: true });
 
-const ID_RE = /^[a-z0-9][a-z0-9-]{3,40}$/;
 const TEMPLATE_EXT = /\.(ai|pdf|svg)$/i;
 const MIME = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
@@ -45,7 +46,6 @@ const MIME = {
   ".svg": "image/svg+xml", ".pdf": "application/pdf", ".ai": "application/pdf", ".ico": "image/x-icon",
 };
 
-const newId = () => Date.now().toString(36) + "-" + Math.random().toString(36).slice(2, 8);
 
 function readJson(file, fallback) {
   try { return JSON.parse(fs.readFileSync(file, "utf8").replace(/^/, "")); } catch (e) { return fallback; }
@@ -104,25 +104,7 @@ function libraryList() {
 function librarySave(body) {
   const id = body.id && ID_RE.test(body.id) ? body.id : newId();
   const file = path.join(LIBRARY_DIR, id + ".json");
-  const old = readJson(file, {});
-  const pick = (k, fallback) => (body[k] !== undefined ? body[k] : old[k] !== undefined ? old[k] : fallback);
-  const item = {
-    id,
-    name: String(pick("name", "Imported")).slice(0, 160),
-    file: String(pick("file", "")).slice(0, 260),
-    page: +pick("page", 1) || 1,
-    order: +pick("order", 0) || 0,
-    source: pick("source", "pdf") === "svg" ? "svg" : "pdf",
-    width: +pick("width", 600) || 600,
-    height: +pick("height", 400) || 400,
-    region: Array.isArray(pick("region", null)) ? pick("region", null).map(Number) : null,
-    original: /^library\/orig-[a-z0-9-]+\.pdf$/.test(pick("original", "")) ? pick("original", "") : null,
-    texts: Array.isArray(pick("texts", [])) ? pick("texts", []) : [],
-    svg: typeof pick("svg", null) === "string" ? pick("svg", null) : undefined,
-    background: old.background,
-    created: old.created || +body.created || Date.now(),
-    updated: Date.now(),
-  };
+  const item = mergeItem(readJson(file, {}), body, id);
   const m = /^data:image\/(png|jpeg);base64,(.+)$/.exec(body.background || "");
   if (m) {
     const name = id + (m[1] === "png" ? ".png" : ".jpg");
@@ -169,9 +151,7 @@ function designSave(body) {
   const data = body.data || {};
   writeJson(path.join(DESIGNS_DIR, id + ".json"), { id, name, created: old.created || now, updated: now, data });
   const thumb = /^data:image\/(png|jpeg);base64,/.test(body.thumb || "") && body.thumb.length < 400000 ? body.thumb : old.thumb || "";
-  writeJson(path.join(DESIGNS_DIR, id + ".meta.json"),
-    { id, name, created: old.created || now, updated: now, rows: Array.isArray(data.rows) ? data.rows.length : 0, thumb,
-      source: String(data.sourceName || "").slice(0, 200), changed: data.edits && typeof data.edits === "object" ? Object.keys(data.edits).length : 0 });
+  writeJson(path.join(DESIGNS_DIR, id + ".meta.json"), designMeta(id, name, old.created || now, now, data, thumb));
   return { id, updated: now };
 }
 
@@ -299,6 +279,15 @@ async function handleNativeRequest(req, res) {
     }
     if (p === "/api/folder/file" && m === "GET") return sendFolderFile(res, url.searchParams.get("name") || "");
 
+    // the master template's look of the 3 texts (header, position, name), shared by every design
+    if (p === "/api/master") {
+      if (m === "GET") return send(res, 200, readJson(MASTER_FILE, {}));
+      if (m === "POST") {
+        const b = await readBody(req);
+        writeJson(MASTER_FILE, b && typeof b === "object" && !Array.isArray(b) ? b : {});
+        return send(res, 200, readJson(MASTER_FILE, {}));
+      }
+    }
     if (p === "/api/library") {
       if (m === "GET") return send(res, 200, libraryList());
       if (m === "POST") return send(res, 200, librarySave(await readBody(req)));
