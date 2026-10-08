@@ -123,6 +123,7 @@ function librarySave(body) {
     // words), those words' boxes, and where this design's 3 master texts go once saved
     hide: Array.isArray(pick("hide", [])) ? pick("hide", []).map(Number).filter(Number.isInteger) : [],
     outlined: Array.isArray(pick("outlined", [])) ? pick("outlined", []) : [],
+    cleaned: +pick("cleaned", 0) || 0, // autoClean (js/library.js) has been run on it
     layout: pick("layout", null) && typeof pick("layout", null) === "object" ? pick("layout", null) : null,
     svg: typeof pick("svg", null) === "string" ? pick("svg", null) : undefined,
     background: old.background,

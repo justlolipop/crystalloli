@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll } from "./library.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
@@ -810,6 +810,12 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
   try { setFontList(await store.fonts()); } catch (e) {}
   try { setMaster(await store.master()); } catch (e) {}
   try { S.library = await store.listLibrary(); } catch (e) { S.library = []; toast(e.message, "bad"); }
+  // designs imported before the logo clean-up: cleaned once now (and saved)
+  if (S.library.some((it) => it.source === "pdf" && it.original && !it.cleaned)) {
+    toast("Taking the school logos out of older designs (only this once)…");
+    const n = await autoCleanAll(S.library, store.saveLibrary);
+    if (n) toast(`Cleaned ${n} older design${n === 1 ? "" : "s"}. Use Remove from background for anything left.`);
+  }
   S.source = sources()[0] ? sources()[0].file : null;
   // opened from the order website's crystal preview (✎ Edit): start with that order's rows
   let opened = null;

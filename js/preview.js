@@ -9,7 +9,7 @@
 import { esc } from "./util.js";
 import { setFontList } from "./fonts.js";
 import { store } from "./store.js";
-import { libraryScene, setMaster } from "./library.js";
+import { libraryScene, setMaster, autoCleanAll } from "./library.js";
 import { renderOffscreen } from "./editor.js";
 import { templateFor } from "./jenis.js";
 
@@ -312,7 +312,14 @@ window.addEventListener("message", (e) => {
 (async () => {
   try { setFontList(await store.fonts()); } catch (e) {}
   try { setMaster(await store.master()); } catch (e) {}
-  try { library = await store.listLibrary(); } catch (e) {
+  try {
+    library = await store.listLibrary();
+    // designs imported before the logo clean-up: cleaned once now (and saved)
+    if (library.some((it) => it.source === "pdf" && it.original && !it.cleaned)) {
+      out.innerHTML = `<p class="msg">Taking the school logos out of older designs (only this once)…</p>`;
+      await autoCleanAll(library, store.saveLibrary);
+    }
+  } catch (e) {
     out.innerHTML = `<p class="msg">Couldn't read the Crystal Studio designs (${esc(e.message)}).</p>`;
   }
   tell({ type: "crystal-studio-ready" });

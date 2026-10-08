@@ -118,8 +118,9 @@ export function guessLayout(item) {
     const cx = b ? (b.l + b.r) / 2 : W / 2;
     out[f] = {
       cx, top: b ? b.t : H * fallback[i][0], size: b ? b.size : H * fallback[i][1],
-      // the crystal's shape is narrower than its box: keep to the middle 72%
-      maxW: Math.min(W * 0.72, 0.92 * 2 * Math.min(cx, W - cx)), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
+      // the crystal's shape is narrower than its box, and the words shouldn't touch its edge or the
+      // artwork at the sides: keep to the middle 60%
+      maxW: Math.min(W * 0.6, 0.8 * 2 * Math.min(cx, W - cx)), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
     };
   });
   return out;
@@ -426,7 +427,7 @@ async function importPdf(file, progress) {
         file: file.name, page: n, order: out.length, source: "pdf", width: r.w, height: r.h, region: [r.x, r.y, r.w, r.h], original,
         background: regions.length ? crop(bare.canvas, r, S) : bare.canvas.toDataURL("image/png"),
         texts: blocks.filter((b) => !regions.length || inside(b, r)).map((b) => finishText(b, r)),
-        hide: cleared[i].hide, outlined: cleared[i].outlined,
+        hide: cleared[i].hide, outlined: cleared[i].outlined, cleaned: CLEAN_VERSION,
       });
     });
     bare.canvas.width = bare.canvas.height = 0;
@@ -769,6 +770,34 @@ export async function pieceAt(item, x, y) {
   // otherwise just the one shape or picture under the click
   const one = plan.items.filter((it) => at(it) && !hidden.has(it.op) && area(it) <= A * 0.1).sort((a, b) => area(a) - area(b))[0];
   return one ? [one.op] : null;
+}
+
+// Designs imported before the logo was taken out automatically (or before it found logos pasted as
+// a picture) still have it: they get the same clean-up once, without importing them again. What was
+// removed by hand stays removed; "Put back" afterwards isn't undone (cleaned marks it as done).
+// -> the changes to save ({ id, cleaned, hide, outlined, background? }), or null when already done
+export const CLEAN_VERSION = 1;
+export async function autoClean(item) {
+  if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
+  const { page } = await designPage(item);
+  const plan = pagePlan(page);
+  const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
+  const found = plan ? logoAndWords(plan, { x, y, w, h }) : { hide: [], outlined: [] };
+  const had = item.hide || [], hide = [...new Set([...had, ...found.hide])];
+  const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: (item.outlined || []).length ? item.outlined : found.outlined };
+  if (hide.length !== had.length) out.background = await redrawBackground(item, hide);
+  return out;
+}
+// every design in the library that needs it, saved -> how many were cleaned
+export async function autoCleanAll(library, save) {
+  let n = 0;
+  for (const [i, it] of library.entries()) {
+    try {
+      const u = await autoClean(it);
+      if (u) { library[i] = Object.assign(it, await save(u)); n++; }
+    } catch (e) { /* this one stays as it is; tried again next time */ }
+  }
+  return n;
 }
 
 // a design's background drawn again, at screen size, leaving out the steps in hide -> png data URL
