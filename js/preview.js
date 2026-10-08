@@ -37,18 +37,6 @@ let library = [];
 let job = 0;
 
 
-// one tab per category (like the order's Excel sheets); "" = rows with no category
-function byCategory(rows) {
-  const cats = new Map();
-  for (const row of rows) {
-    if (!/\bCRYSTAL\b/i.test(String(row.jenis_plak || ""))) continue;
-    const c = String(row.category || "").trim();
-    if (!cats.has(c)) cats.set(c, []);
-    cats.get(c).push(row);
-  }
-  return [...cats];
-}
-
 // rows with the same jenis plak, and the same words, are one tile
 function groupRows(rows) {
   const groups = new Map();
@@ -67,40 +55,41 @@ const caption = (row) => String(row.event_line_1 || row.position || row.event_he
 
 let allRows = [], tab = null;
 
+// one tab per crystal design (jenis plak) in the order; a design not imported into Crystal Studio
+// yet is marked
 function show(rows) {
   allRows = rows || [];
-  const cats = byCategory(allRows);
-  if (!cats.some(([c]) => c === tab)) tab = cats.length ? cats[0][0] : null;
-  tabs.innerHTML = cats.map(([c, list]) =>
-    `<button type="button" class="tab${c === tab ? " on" : ""}" data-cat="${esc(c)}">${esc(c || "Other")}<span>${list.length}</span></button>`).join("");
-  tabs.hidden = !cats.length;
-  showTab(cats.length ? cats.find(([c]) => c === tab)[1] : []);
+  const groups = groupRows(allRows);
+  if (!groups.some((g) => g.jenis === tab)) tab = groups.length ? groups[0].jenis : null;
+  tabs.innerHTML = groups.map((g) => {
+    const count = g.tiles.reduce((n, t) => n + t.qty, 0), missing = !templateFor(library, g.jenis);
+    return `<button type="button" class="tab${g.jenis === tab ? " on" : ""}${missing ? " missing" : ""}" data-jenis="${esc(g.jenis)}"
+      title="${missing ? "No Crystal Studio design for this yet" : esc(g.jenis)}">${esc(g.jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, ""))}<span>${count}</span></button>`;
+  }).join("");
+  tabs.hidden = !groups.length;
+  showTab(groups.find((g) => g.jenis === tab));
 }
 
 tabs.onclick = (e) => {
   const b = e.target.closest(".tab");
   if (!b) return;
-  tab = b.dataset.cat;
+  tab = b.dataset.jenis;
   at = 0;
   zoom = 1;
   show(allRows);
 };
 
-// One crystal at a time, like the editor: ‹ › go through this tab's crystals (each different set of
-// words on each design; a design not imported yet is one stop too, saying so). Click the picture,
-// or + / −, to zoom.
+// One crystal at a time, like the editor: ‹ › go through this design's crystals (each different set
+// of words). Click the picture, or + / −, to zoom.
 let slides = [], at = 0, zoom = 1, columns = [];
 const pics = new Map(); // slide key -> picture (data URL), drawn once
 const ZOOMS = [1, 1.5, 2, 3];
 
-function showTab(rows) {
+function showTab(g) {
   ++job;
   columns = [...new Set(allRows.flatMap((r) => Object.keys(r)))].map((k) => ({ key: k, label: k }));
-  slides = groupRows(rows).flatMap((g) => {
-    const it = templateFor(library, g.jenis);
-    const count = g.tiles.reduce((n, t) => n + t.qty, 0);
-    return it ? g.tiles.map((t) => ({ g, it, t, count })) : [{ g, it: null, t: null, count }];
-  });
+  const it = g && templateFor(library, g.jenis);
+  slides = !g ? [] : it ? g.tiles.map((t) => ({ g, it, t })) : [{ g, it: null, t: null }];
   at = Math.min(at, Math.max(0, slides.length - 1));
   if (!slides.length) {
     out.innerHTML = `<p class="msg">This order has no crystal.</p>`;
@@ -157,7 +146,7 @@ async function draw() {
   document.getElementById("vJenis").textContent = sl.g.jenis;
   document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "");
   document.getElementById("vEdit").hidden = !sl.it;
-  document.getElementById("vCap").textContent = sl.t ? caption(sl.t.row) : "";
+  document.getElementById("vCap").textContent = sl.t ? [sl.t.row.category, caption(sl.t.row)].filter(Boolean).join(" · ") : "";
   document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
   const stage = document.getElementById("vStage");
   const flipped = !!sl.it && (sl.it.texts || []).some((t) => t.flipX);
