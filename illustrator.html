@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Opening in Illustrator</title>
+<!-- A small window from Crystal Studio on this PC (Start Studio.bat). The online studio or the order
+     website opens it and hands it the crystals (as Illustrator-ready .svg); it gives them to this
+     PC's server, which opens Illustrator and saves each one as .ai. A page on the internet can't
+     reach this PC by itself; this window, served by the PC, can. -->
+<style>
+  :root { color-scheme: dark; }
+  body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #070912; color: #e6e9ff;
+    font: 15px/1.5 system-ui, sans-serif; text-align: center; padding: 16px; box-sizing: border-box; }
+  .bad { color: #ff6b8a; }
+  small { color: #8f97c4; display: block; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div><p id="msg">Waiting for the crystals…</p><small id="sub">Crystal Studio on this PC</small></div>
+<script>
+(async () => {
+  const msg = document.getElementById("msg"), sub = document.getElementById("sub");
+  const tell = (m) => { try { window.opener && window.opener.postMessage(m, "*"); } catch (e) {} };
+  let origins = [];
+  try { origins = (await (await fetch("/api/illustrator/svgs")).json()).origins || []; } catch (e) {}
+  const allowed = (o) => o === location.origin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) || origins.includes(o);
+  let busy = false;
+  window.addEventListener("message", async (e) => {
+    if (!e.data || e.data.type !== "crystal-illustrator-files" || busy || !allowed(e.origin) || e.source !== window.opener) return;
+    busy = true;
+    const files = Array.isArray(e.data.files) ? e.data.files : [];
+    msg.textContent = `Opening ${files.length} crystal${files.length === 1 ? "" : "s"} in Illustrator…`;
+    let r;
+    try {
+      r = await (await fetch("/api/illustrator/svgs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files }) })).json();
+    } catch (err) { r = { ok: false, error: err.message }; }
+    tell({ type: "crystal-illustrator-done", result: r });
+    if (r.ok) {
+      msg.textContent = "Illustrator is opening them.";
+      sub.textContent = "Each is saved as .ai in " + r.folder + ". This window closes by itself.";
+      setTimeout(() => window.close(), 4000);
+    } else {
+      msg.className = "bad";
+      msg.textContent = "Couldn't open Illustrator: " + (r.error || "no answer");
+    }
+  });
+  tell({ type: "crystal-illustrator-ready" });
+})();
+</script>
+</body>
+</html>

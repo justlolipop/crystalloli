@@ -10,6 +10,7 @@ import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, M
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
+import { illustratorWindow } from "./to-illustrator.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
 import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
 
@@ -716,9 +717,8 @@ async function illustratorJob(all) {
 // As you see it, opened in Illustrator and saved as .ai: the rows as Illustrator-ready .svg (words
 // editable, artwork at print quality) go to Crystal Studio's program on this PC, which opens them
 // in Illustrator. Works from the online studio too, as long as Start Studio.bat runs on this PC.
-const LOCAL = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? "" : "http://localhost:5190";
 async function openInIllustrator(all) {
-  const up = await fetch(LOCAL + "/api/illustrator/svgs").then((r) => r.ok).catch(() => false);
+  const bridge = illustratorWindow(); // opened now, while it's a click
   const files = [], used = new Set();
   const rows = all ? [...new Set(S.rows.map((_, i) => canon(i)))] : [S.row];
   for (const [n, r] of rows.entries()) {
@@ -735,9 +735,12 @@ async function openInIllustrator(all) {
     used.add(name);
     files.push({ name, svg });
   }
-  if (!files.length) return toast("These rows have no crystal design to open.", "bad");
+  if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
+  toast("Opening in Illustrator…");
+  const r = await bridge.send(files);
+  if (r) return toast(r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
   // without Start Studio.bat: download them (one .svg, or a .zip), to open in Illustrator by hand
-  if (!up) {
+  {
     if (files.length === 1 || !window.JSZip) for (const f of files) downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
     else {
       const zip = new JSZip();
@@ -746,10 +749,6 @@ async function openInIllustrator(all) {
     }
     return toast("Downloaded. Open it in Illustrator (words editable), then File › Save As › .ai. With Start Studio.bat running, it opens in Illustrator by itself.");
   }
-  toast("Opening in Illustrator…");
-  const r = await fetch(LOCAL + "/api/illustrator/svgs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files }) })
-    .then((x) => x.json()).catch((e) => ({ ok: false, error: e.message }));
-  toast(r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
 }
 
 async function doExport(kind) {
