@@ -524,7 +524,7 @@ $("saveDefault").onclick = async () => {
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
   markDirty();
   await show(S.row);
-  toast(`Saved as the default for ${it.name}. The order website shows it after a refresh.`);
+  toast(`Saved as the default for ${it.name}. The order website's preview updates by itself.`);
 };
 
 // Remove from background: while on, a click on the design takes the piece of artwork there (the
@@ -829,6 +829,12 @@ $("openList").addEventListener("click", async (e) => {
 });
 
 $("saveBtn").onclick = saveDesign;
+$("backToOrder").onclick = async () => {
+  if (S.dirty && !await ask("Changes made only on these rows (not saved as the default template) will be lost. Go back?")) return;
+  S.dirty = false;
+  window.close(); // works for the tab the website opened
+  setTimeout(() => toast("Switch back to the order website's tab: its Crystal Preview already shows what you saved."), 300);
+};
 $("openBtn").onclick = openDialog;
 $("openClose").onclick = () => $("openDlg").close();
 $("newBtn").onclick = async () => {
@@ -872,6 +878,8 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
   let opened = null;
   if (location.hash.startsWith("#order=")) {
     try { opened = JSON.parse(decodeURIComponent(location.hash.slice(7))); } catch (e) {}
+    // opened from the order website (✎ Edit, a new tab): a way back to it
+    $("backToOrder").hidden = false;
     history.replaceState(null, "", location.pathname);
   }
   if (opened && Array.isArray(opened.rows) && opened.rows.length) {

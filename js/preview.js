@@ -8,7 +8,7 @@
 
 import { esc } from "./util.js";
 import { setFontList, setFontFiles } from "./fonts.js";
-import { store } from "./store.js";
+import { store, onLibraryChanged } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll } from "./library.js";
 import { renderOffscreen } from "./editor.js";
 import { templateFor } from "./jenis.js";
@@ -294,6 +294,32 @@ async function draw() {
   sendHeight();
 }
 
+// a design or the master template changed (saved in Crystal Studio, in another tab): read them
+// again and draw again. Also when this page is looked at again, in case that tab was elsewhere.
+let reloadTimer = null, reloading = false;
+async function reloadLibrary() {
+  if (reloading) return;
+  reloading = true;
+  try {
+    const [lib, m] = await Promise.all([store.listLibrary(), store.master()]);
+    const same = JSON.stringify(lib) === JSON.stringify(library) && JSON.stringify(m) === JSON.stringify(lastMaster);
+    if (!same) {
+      library = lib;
+      lastMaster = m;
+      setMaster(m);
+      pics.clear();
+      smalls.clear();
+      if (allRows.length) show(allRows);
+    }
+  } catch (e) { /* keep showing what's there */ }
+  reloading = false;
+}
+const reloadSoon = () => { clearTimeout(reloadTimer); reloadTimer = setTimeout(reloadLibrary, 400); };
+onLibraryChanged(reloadSoon);
+document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") reloadSoon(); });
+window.addEventListener("focus", reloadSoon);
+let lastMaster = {};
+
 window.addEventListener("message", (e) => {
   if (e.source !== window.parent || !e.data) return;
   if (e.data.type === "crystal-rows") show(Array.isArray(e.data.rows) ? e.data.rows : []);
@@ -312,7 +338,7 @@ window.addEventListener("message", (e) => {
 (async () => {
   try { setFontList(await store.fonts()); } catch (e) {}
   try { setFontFiles(await store.fontFiles()); } catch (e) {}
-  try { setMaster(await store.master()); } catch (e) {}
+  try { lastMaster = await store.master(); setMaster(lastMaster); } catch (e) {}
   try {
     library = await store.listLibrary();
     // designs imported before the logo clean-up: cleaned once now (and saved)
