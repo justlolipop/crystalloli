@@ -142,7 +142,9 @@ async function masterTexts(item, row) {
     const below = tops.filter((t, j) => j !== i && t > tops[i] + 1);
     const room = (below.length ? Math.min(...below) : item.height * 0.92) - tops[i] - item.height * 0.01;
     const lines = text.split("\n").length, lh = (look.lineHeight || 1) * 1.13;
-    const tall = room > 0 ? room / (lines * lh) : base;
+    // saved by hand: kept as saved, smaller only for more lines than it had; else no taller than the
+    // room down to the next text
+    const tall = s && s.lines ? (lines > s.lines ? (base * s.lines) / lines : base) : room > 0 ? room / (lines * lh) : base;
     const size = Math.max(4, Math.min(fitSize(text, css, base, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
     let top = s ? s.top : g.top;
     // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
