@@ -9,7 +9,7 @@
 import { esc } from "./util.js";
 import { setFontList } from "./fonts.js";
 import { store } from "./store.js";
-import { libraryScene } from "./library.js";
+import { libraryScene, setMaster } from "./library.js";
 import { renderOffscreen } from "./editor.js";
 import { templateFor } from "./jenis.js";
 
@@ -98,8 +98,19 @@ async function showTab(rows) {
     const tiles = it ? g.tiles.slice(0, MAX_TILES).map((t, ti) =>
       `<div class="tile" id="t${gi}-${ti}"><div class="pic">…</div><div class="cap"><span class="qty">×${t.qty}</span>${esc(caption(t.row))}</div></div>`).join("") : "";
     const more = it && g.tiles.length > MAX_TILES ? `<p class="msg">…and ${g.tiles.length - MAX_TILES} more.</p>` : "";
-    return `<div class="group"><h3>${esc(g.jenis)}</h3><div class="sub${it ? "" : " warn"}">${sub}</div><div class="tiles">${tiles}</div>${more}</div>`;
+    const edit = it ? ` <a href="#" class="edit" data-g="${gi}" title="Open this design in Crystal Studio with these rows, to change it and save it as the default">✎ Edit in Crystal Studio</a>` : "";
+    return `<div class="group"><h3>${esc(g.jenis)}${edit}</h3><div class="sub${it ? "" : " warn"}">${sub}</div><div class="tiles">${tiles}</div>${more}</div>`;
   }).join("");
+
+  // ✎ Edit: Crystal Studio opens in a new tab with this design's rows, carried in the link itself
+  // (after the #, so they never leave this computer)
+  out.onclick = (e) => {
+    const a = e.target.closest("a.edit");
+    if (!a) return;
+    e.preventDefault();
+    const g = groups[+a.dataset.g];
+    window.open("/#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, rows: g.tiles.map((t) => t.row) })), "_blank");
+  };
 
   let mirrored = false;
   for (const [gi, g] of groups.entries()) {
@@ -131,6 +142,7 @@ window.addEventListener("message", (e) => {
 
 (async () => {
   try { setFontList(await store.fonts()); } catch (e) {}
+  try { setMaster(await store.master()); } catch (e) {}
   try { library = await store.listLibrary(); } catch (e) {
     out.innerHTML = `<p class="msg">Couldn't read the Crystal Studio designs (${esc(e.message)}).</p>`;
   }

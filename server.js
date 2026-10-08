@@ -34,6 +34,7 @@ const APP_DIR = __dirname;
 const CONFIG_FILE = path.join(APP_DIR, "studio.config.json");
 const DESIGNS_DIR = path.join(APP_DIR, "designs");
 const LIBRARY_DIR = path.join(APP_DIR, "library");
+const MASTER_FILE = path.join(APP_DIR, "master.json");
 const OUTPUT_DIR = path.join(APP_DIR, "output"); // .ai files made in Illustrator, one folder per run
 for (const d of [DESIGNS_DIR, LIBRARY_DIR]) fs.mkdirSync(d, { recursive: true });
 
@@ -118,6 +119,11 @@ function librarySave(body) {
     region: Array.isArray(pick("region", null)) ? pick("region", null).map(Number) : null,
     original: /^library\/orig-[a-z0-9-]+\.pdf$/.test(pick("original", "")) ? pick("original", "") : null,
     texts: Array.isArray(pick("texts", [])) ? pick("texts", []) : [],
+    // master template: the artwork steps left out of the background (the logo, old outlined
+    // words), those words' boxes, and where this design's 3 master texts go once saved
+    hide: Array.isArray(pick("hide", [])) ? pick("hide", []).map(Number).filter(Number.isInteger) : [],
+    outlined: Array.isArray(pick("outlined", [])) ? pick("outlined", []) : [],
+    layout: pick("layout", null) && typeof pick("layout", null) === "object" ? pick("layout", null) : null,
     svg: typeof pick("svg", null) === "string" ? pick("svg", null) : undefined,
     background: old.background,
     created: old.created || +body.created || Date.now(),
@@ -299,6 +305,15 @@ async function handleNativeRequest(req, res) {
     }
     if (p === "/api/folder/file" && m === "GET") return sendFolderFile(res, url.searchParams.get("name") || "");
 
+    // the master template's look of the 3 texts (header, position, name), shared by every design
+    if (p === "/api/master") {
+      if (m === "GET") return send(res, 200, readJson(MASTER_FILE, {}));
+      if (m === "POST") {
+        const b = await readBody(req);
+        writeJson(MASTER_FILE, b && typeof b === "object" && !Array.isArray(b) ? b : {});
+        return send(res, 200, readJson(MASTER_FILE, {}));
+      }
+    }
     if (p === "/api/library") {
       if (m === "GET") return send(res, 200, libraryList());
       if (m === "POST") return send(res, 200, librarySave(await readBody(req)));

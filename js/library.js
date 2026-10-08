@@ -1,20 +1,21 @@
 // Crystal templates imported from a file — no Illustrator needed.
 //   .ai / .pdf  Each artboard is read. When an artboard holds several designs side by side
-//               (Design A, B, C …), each one becomes its own template. The artwork becomes the
-//               design's locked picture and every piece of live text becomes its own editable text,
-//               in the same font, size, colour and place. (Text converted to outlines in Illustrator
-//               stays part of the picture.) The original file is kept so downloads can redraw the
-//               artwork at full print resolution.
-//   .svg        Everything stays editable: shapes, lines and text.
-// Text typed as {{column}} in Illustrator, or text that matches an Excel column name, fills in from
-// the Excel row; any other text can be linked to a column by hand, and stays linked.
+//               (Design A, B, C …), each one becomes its own template. Its artwork becomes the
+//               design's locked picture, without the school logo and without its old words (live
+//               text, or text converted to outlines). On it go the master template's 3 texts —
+//               header, position and name — filled from the Excel row, in the master's fonts and
+//               where the design's own words were (or where its saved default puts them).
+//               The original file is kept so downloads can redraw the artwork at full print
+//               resolution.
+//   .svg        Everything stays editable: shapes, lines and text. Text typed as {{column}} in
+//               Illustrator, or text that matches an Excel column name, fills in from the Excel row.
 
 import { loose } from "./util.js";
 import { useFont, findFont } from "./fonts.js";
 import { fitSize } from "./measure.js";
 import { store } from "./store.js";
 import { visibleTextItems, readableText, withoutLiveText } from "./pdf.js";
-import { pagePlan, drawOnly, serial } from "./elements.js";
+import { pagePlan, drawOnly, serial, findElements } from "./elements.js";
 
 const PDF_WORKER = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
 const PLACEHOLDER = /\{\{\s*([^{}]+?)\s*\}\}/g;
@@ -63,6 +64,83 @@ export function setFieldValue(row, field, text) {
   more.forEach((f, i) => { row[f] = lines[keep + i] || ""; });
 }
 
+// ------------------------------------------------------------------ the master template
+// Every crystal design shows the same 3 texts: the event's header, the award (position) and the
+// name (event_line_1, with event_line_2 / 3 as more lines). Their look (font, colour, outline) is
+// the master's, shared by all designs; where they sit and how big comes from the design: from
+// where its own .ai had its words (guessLayout), until a layout is saved for it in the editor.
+
+export const MASTER_FIELDS = ["event_header", "position", "event_line_1"];
+const LOOK = ["ps", "family", "bold", "italic", "fill", "stroke", "strokeWidth", "paintFirst", "strokeLineJoin",
+  "outerStroke", "outerStrokeWidth", "charSpacing", "lineHeight", "scaleX"];
+let master = {};
+export function setMaster(m) { master = m && typeof m === "object" ? m : {}; }
+export const getMaster = () => master;
+export const lookOf = (t) => Object.fromEntries(LOOK.filter((k) => t[k] !== undefined && t[k] !== null).map((k) => [k, t[k]]));
+
+// a design's own words (live text, and old words drawn as shapes) as boxes in pt, top to bottom
+function wordBoxes(item) {
+  const W = item.width;
+  const boxes = (item.texts || []).filter((t) => !t.angle && String(t.text).trim()).map((t) => {
+    const lines = String(t.text).split("\n");
+    const size = t.fontSize, lh = size * (t.lineHeight || 1) * 1.13;
+    const w = Math.min(t.maxW || W, Math.max(...lines.map((l) => l.length)) * size * 0.55 * (t.scaleX || 1));
+    const l = t.originX === "center" ? t.left - w / 2 : t.originX === "right" ? t.left - w : t.left;
+    return { l, r: l + w, t: t.top, b: t.top + lh * lines.length, size, text: t };
+  });
+  for (const o of item.outlined || []) boxes.push({ l: o.l, r: o.r, t: o.t, b: o.b, size: Math.min(o.b - o.t, item.height * 0.08), text: null });
+  return boxes.sort((a, b) => a.t - b.t);
+}
+
+// where the 3 texts go on this design, guessed from its own words: the top one is the header, the
+// bottom one the name, the biggest one between them the position. -> { field: { cx, top, size, maxW, flipX, look } }
+export function guessLayout(item) {
+  const W = item.width, H = item.height, bs = wordBoxes(item);
+  let pick;
+  if (bs.length >= 3) pick = [bs[0], bs.slice(1, -1).reduce((a, b) => (b.size > a.size ? b : a)), bs[bs.length - 1]];
+  else if (bs.length === 2) pick = [bs[0], null, bs[1]];
+  else pick = [bs[0] || null, null, null];
+  const mirrored = (item.texts || []).some((t) => t.flipX);
+  const fallback = [[0.3, 0.05], [0.5, 0.07], [0.72, 0.05]]; // top, size (share of the height)
+  const out = {};
+  MASTER_FIELDS.forEach((f, i) => {
+    const b = pick[i];
+    const cx = b ? (b.l + b.r) / 2 : W / 2;
+    out[f] = {
+      cx, top: b ? b.t : H * fallback[i][0], size: b ? b.size : H * fallback[i][1],
+      maxW: 0.92 * 2 * Math.min(cx, W - cx), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
+    };
+  });
+  return out;
+}
+
+// the 3 master texts for one Excel row on this design
+async function masterTexts(item, row) {
+  const guess = guessLayout(item), saved = item.layout || {};
+  const texts = [];
+  for (const f of MASTER_FIELDS) {
+    const text = fieldValue(row, f);
+    if (!text.trim()) continue;
+    const g = guess[f], s = saved[f];
+    const look = { family: "Arial", bold: true, fill: "#000000", ...(g.look || {}), ...(master[f] || {}) };
+    const css = look.ps ? await useFont(look.ps, look.family, look.style) : `"${look.family}", sans-serif`;
+    const base = s ? s.fontSize : g.size, maxW = s ? s.maxW : g.maxW;
+    const size = fitSize(text, css, base, look.charSpacing || 0, look.scaleX || 1, maxW, 4);
+    let top = s ? s.top : g.top;
+    // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
+    const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
+    if (extra > 0) top -= (extra * size * (look.lineHeight || 1) * 1.13) / 2;
+    const real = css.startsWith("ps_");
+    texts.push({
+      ...look, text, css, field: f, src: "m:" + f, tplText: null, top, fontSize: size, maxW,
+      left: s ? s.left : g.cx, originX: s ? s.originX : "center", textAlign: s ? s.textAlign : "center",
+      angle: s ? s.angle || 0 : 0, flipX: s ? !!s.flipX : g.flipX, scaleY: 1,
+      fontWeight: !real && look.bold ? "bold" : "normal", fontStyle: !real && look.italic ? "italic" : "normal",
+    });
+  }
+  return texts;
+}
+
 // ------------------------------------------------------------------ scene for one Excel row
 
 export async function libraryScene(item, row, columns) {
@@ -78,28 +156,10 @@ export async function libraryScene(item, row, columns) {
     return { type: "svg", svg: item.svg, width: item.width, height: item.height, background: "", row, columns, fontMap };
   }
 
-  const texts = [];
-  for (const [i, t] of (item.texts || []).entries()) {
-    const css = t.ps ? await useFont(t.ps, t.family, t.style) : t.family ? `"${t.family}", sans-serif` : "Arial";
-    const hasPh = /\{\{[^{}]+\}\}/.test(t.text);
-    const field = t.field || fieldFromText(t.text, columns);
-    let text = t.text, top = t.top;
-    if (hasPh) text = fillPlaceholders(t.text, row, columns);
-    else if (fieldValue(row, field).trim()) text = fieldValue(row, field);
-    if (!String(text).trim()) continue;
-    const size = text === t.text ? t.fontSize : fitSize(text, css, t.fontSize, t.charSpacing, t.scaleX, t.maxW, 4);
-    // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
-    const extra = field === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
-    if (extra > 0) top -= (extra * size * (t.lineHeight || 1) * 1.13) / 2;
-    const real = css.startsWith("ps_");
-    texts.push({
-      ...t, text, top, css, field, fontSize: size, src: i, tplText: hasPh ? t.text : null,
-      fontWeight: !real && t.bold ? "bold" : "normal", fontStyle: !real && t.italic ? "italic" : "normal",
-    });
-  }
+  // .ai / .pdf designs: their artwork (without its logo and old words) + the master template's 3 texts
   const images = item.background
     ? [{ role: "bg", src: "/" + item.background, left: 0, top: 0, width: item.width, height: item.height }] : [];
-  return { width: item.width, height: item.height, background: "", images, texts };
+  return { width: item.width, height: item.height, background: "", images, texts: await masterTexts(item, row) };
 }
 
 // ------------------------------------------------------------------ import
@@ -142,12 +202,30 @@ class CanvasFactory {
   destroy(cc) { cc.canvas.width = 0; cc.canvas.height = 0; cc.canvas = null; cc.context = null; }
 }
 
+// A design's school logo and its old words drawn as shapes (outlined text), as drawing steps to
+// leave out of its background: the master template puts its own 3 texts on the bare artwork.
+// The logo is the picture nearest the top middle (flowers and corners sit at the sides).
+// r: the design's box on the page (pt) -> { hide: [step], outlined: [{ l, t, r, b }] (pt, design) }
+function logoAndWords(plan, r) {
+  const els = findElements(plan.items, { x: r.x, y: r.y, w: r.w, h: r.h });
+  const cx = (e) => (e.x0 + e.x1) / 2 - r.x, cy = (e) => (e.y0 + e.y1) / 2 - r.y;
+  const logo = els.filter((e) => e.kind === "graphic" && Math.abs(cx(e) - r.w / 2) < r.w * 0.15 && cy(e) < r.h * 0.45)
+    .sort((a, b) => Math.abs(cx(a) - r.w / 2) - Math.abs(cx(b) - r.w / 2))[0];
+  // small "text" pieces are usually bits of a picture, not words
+  const words = els.filter((e) => e.kind === "text" && e.x1 - e.x0 >= r.w * 0.2);
+  return {
+    hide: [...(logo ? logo.ops : []), ...words.flatMap((e) => e.ops)],
+    outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y })),
+  };
+}
+
 // The artwork without its live text. Text with an outline or shadow made in Illustrator usually
 // has a copy of its letters drawn as shapes right behind it; hiding only the live letters left that
 // copy as a white "ghost" of the words. So shapes that sit inside a live text's box are left out too.
+// hide: more drawing steps to leave out (a design's logo and old outlined words, see logoAndWords).
 // Returns { without: runs another drawing of this page with those shapes left out as well,
 //           ghosts: the shapes left out (their box in pt, colour, line width) }
-async function drawBare(page, textItems, c, vp) {
+async function drawBare(page, textItems, c, vp, hide = []) {
   const draw = () => {
     c.ctx.clearRect(0, 0, c.canvas.width, c.canvas.height);
     return withoutLiveText(page, () => page.render({ canvasContext: withoutText(c.ctx), viewport: vp, background: CLEAR }).promise);
@@ -166,8 +244,9 @@ async function drawBare(page, textItems, c, vp) {
     });
   };
   const ghosts = plan.items.filter(inText);
-  if (!ghosts.length) return asIs;
-  const keep = plan.items.filter((it) => !inText(it)).map((it) => it.op);
+  if (!ghosts.length && !hide.length) return asIs;
+  const hidden = new Set(hide);
+  const keep = plan.items.filter((it) => !inText(it) && !hidden.has(it.op)).map((it) => it.op);
   const without = (fn) => serial(() => drawOnly(plan, keep, fn));
   await without(draw);
   return { without, ghosts };
@@ -282,6 +361,11 @@ async function importPdf(file, progress) {
 
     const regions = findDesigns(bareData, W, H, S, pageW, pageH);
     const parts = regions.length ? regions : [{ x: 0, y: 0, w: pageW, h: pageH }];
+    // master template: each design keeps only its artwork; its logo and old outlined words go
+    const plan = pagePlan(page);
+    const cleared = parts.map((r) => (plan ? logoAndWords(plan, r) : { hide: [], outlined: [] }));
+    const hideAll = cleared.flatMap((c) => c.hide);
+    if (hideAll.length) await drawBare(page, tc.items, bare, vp, hideAll);
     const inside = (b, r) => b.cx >= r.x && b.cx <= r.x + r.w && b.cy >= r.y && b.cy <= r.y + r.h;
     const outside = regions.length ? blocks.filter((b) => !regions.some((r) => inside(b, r))) : [];
     const usedLabels = new Set();
@@ -303,6 +387,7 @@ async function importPdf(file, progress) {
         file: file.name, page: n, order: out.length, source: "pdf", width: r.w, height: r.h, region: [r.x, r.y, r.w, r.h], original,
         background: regions.length ? crop(bare.canvas, r, S) : bare.canvas.toDataURL("image/png"),
         texts: blocks.filter((b) => !regions.length || inside(b, r)).map((b) => finishText(b, r)),
+        hide: cleared[i].hide, outlined: cleared[i].outlined,
       });
     });
     bare.canvas.width = bare.canvas.height = 0;
@@ -623,7 +708,7 @@ export function hiResBackground(item, dpi) {
         const vp = page.getViewport({ scale: k, offsetX: -x * k, offsetY: -y * k });
         const c = makeCanvas(Math.round(w * k), Math.round(h * k));
         const items = await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true }));
-        await drawBare(page, items, c, vp);
+        await drawBare(page, items, c, vp, item.hide || []);
         const url = c.canvas.toDataURL("image/png");
         c.canvas.width = c.canvas.height = 0;
         return url;

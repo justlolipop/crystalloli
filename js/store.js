@@ -36,6 +36,9 @@ export const store = {
     return j;
   },
   fonts: () => api("GET", "/api/fonts"),
+  // the master template: the look of the header, position and name texts on every design
+  master: () => api("GET", "/api/master"),
+  saveMaster: (m) => api("POST", "/api/master", m),
   // true when this page comes from server.js (not Live Server / a double-clicked index.html)
   async ping() {
     try {
