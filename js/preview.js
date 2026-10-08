@@ -218,7 +218,7 @@ async function generateAll(ai) {
     a.remove();
     setTimeout(() => URL.revokeObjectURL(a.href), 60000);
     say(`Done: ${files.length} crystal${files.length === 1 ? "" : "s"} downloaded${badNote}.` +
-      (ai ? " To open them straight in Illustrator as .ai next time, start Crystal Studio on this PC (Start Studio.bat) first." : ""));
+      (ai ? " Couldn't reach Crystal Studio on this PC, so they were downloaded instead: start Start Studio.bat (the latest version) and click again to open them straight in Illustrator." : ""));
   } finally {
     generating = false;
     if (btn.isConnected) btn.disabled = false;
