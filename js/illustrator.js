@@ -190,10 +190,20 @@ var OUTLINE_TEXT = JOB.outline !== false;
       boxes.push([L + bx.l - 1, T - bx.t + 1, L + bx.r + 1, T - bx.b - 1]);
     }
     if (boxes.length) for (i = 0; i < doc.layers.length; i++) removeIn(doc.layers[i], boxes);
-    for (i = 0; i < (r.images || []).length; i++) { try { addImage(doc, r.images[i], L, T); } catch (e) { notes.push("Row " + r.row + ": a picture couldn't be placed (" + e.message + ")"); } }
+    // the studio's words and pictures on a layer of their own, on top: the .ai's own layers may be
+    // locked or hidden
+    var layer = doc.layers.add();
+    layer.name = "Crystal Studio";
+    layer.visible = true;
+    layer.locked = false;
+    try { layer.zOrder(ZOrderMethod.BRINGTOFRONT); } catch (e) {}
+    doc.activeLayer = layer;
+    var added = 0;
+    for (i = 0; i < (r.images || []).length; i++) { try { addImage(layer, r.images[i], L, T); } catch (e) { notes.push("Row " + r.row + ": a picture couldn't be placed (" + e.message + ")"); } }
     for (i = 0; i < r.texts.length; i++) {
-      try { addStyled(doc, r.texts[i].now, L, T); } catch (e) { notes.push("Row " + r.row + ": a text couldn't be added (" + e.message + ")"); }
+      try { addStyled(layer, r.texts[i].now, L, T); added++; } catch (e) { notes.push("Row " + r.row + ": a text couldn't be added (" + e.message + ")"); }
     }
+    if (added < r.texts.length) notes.push("Row " + r.row + ": " + added + " of " + r.texts.length + " texts added.");
     finish(doc, r);
   }
 
@@ -241,7 +251,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
   }
 
   function rgb(hex, fallback) {
-    if (!hex) return fallback;
+    if (!hex) return fallback || null;
     hex = String(hex).replace(/^#/, "");
     var c = new RGBColor();
     c.red = parseInt(hex.substr(0, 2), 16); c.green = parseInt(hex.substr(2, 2), 16); c.blue = parseInt(hex.substr(4, 2), 16);
@@ -251,31 +261,30 @@ var OUTLINE_TEXT = JOB.outline !== false;
   // one studio text as editable Illustrator text, in its own look. An outline drawn behind the
   // letters (as the studio does) needs a copy behind with that outline: they're grouped, named
   // after the words. Change the words in each frame of the group.
-  function frame(doc, b, strokeHex, strokeW) {
-    var tf = doc.textFrames.add();
+  function frame(layer, b, strokeHex, strokeW) {
+    var tf = layer.textFrames.add();
     tf.contents = String(b.text).replace(/\r?\n/g, "\r");
     var ca = tf.textRange.characterAttributes;
-    try { if (b.ps) ca.textFont = app.textFonts.getByName(b.ps); } catch (e) {
-      try { if (b.family) ca.textFont = app.textFonts.getByName(b.family); } catch (e2) {}
-    }
-    ca.size = b.size;
-    ca.horizontalScale = (b.hScale || 1) * 100;
-    ca.tracking = b.tracking || 0;
-    ca.autoLeading = false;
-    ca.leading = b.size * (b.lineHeight || 1) * 1.13;
-    ca.fillColor = rgb(b.fill, new GrayColor());
-    if (strokeHex && strokeW > 0) { ca.strokeColor = rgb(strokeHex); ca.strokeWeight = strokeW; } else ca.strokeColor = new NoColor();
-    tf.textRange.paragraphAttributes.justification = b.align === "center" ? Justification.CENTER : b.align === "right" ? Justification.RIGHT : Justification.LEFT;
+    // each setting on its own: one Illustrator doesn't take mustn't lose the whole text
+    function set(fn) { try { fn(); } catch (e) {} }
+    set(function () { if (b.ps) ca.textFont = app.textFonts.getByName(b.ps); });
+    set(function () { ca.size = b.size; });
+    set(function () { ca.horizontalScale = (b.hScale || 1) * 100; });
+    set(function () { ca.tracking = b.tracking || 0; });
+    set(function () { ca.autoLeading = false; ca.leading = b.size * (b.lineHeight || 1) * 1.13; });
+    set(function () { var c = rgb(b.fill); if (!c) { c = new RGBColor(); c.red = c.green = c.blue = 0; } ca.fillColor = c; });
+    set(function () { if (strokeHex && strokeW > 0) { ca.strokeColor = rgb(strokeHex); ca.strokeWeight = strokeW; } else ca.strokeColor = new NoColor(); });
+    set(function () { tf.textRange.paragraphAttributes.justification = b.align === "center" ? Justification.CENTER : b.align === "right" ? Justification.RIGHT : Justification.LEFT; });
     return tf;
   }
-  function addStyled(doc, b, L, T) {
+  function addStyled(layer, b, L, T) {
     var parts = [];
-    if (b.outer && b.outerWidth > 0) parts.push(frame(doc, b, b.outer, b.outerWidth));
-    if (b.stroke && b.strokeBehind) { parts.push(frame(doc, b, b.stroke, b.strokeWidth)); parts.push(frame(doc, b, null, 0)); }
-    else parts.push(frame(doc, b, b.stroke, b.strokeWidth));
+    if (b.outer && b.outerWidth > 0) parts.push(frame(layer, b, b.outer, b.outerWidth));
+    if (b.stroke && b.strokeBehind) { parts.push(frame(layer, b, b.stroke, b.strokeWidth)); parts.push(frame(layer, b, null, 0)); }
+    else parts.push(frame(layer, b, b.stroke, b.strokeWidth));
     var it = parts[0];
     if (parts.length > 1) {
-      it = doc.groupItems.add();
+      it = layer.groupItems.add();
       for (var k = 0; k < parts.length; k++) parts[k].move(it, ElementPlacement.PLACEATEND); // first one at the back
       it.name = String(b.text).replace(/\s+/g, " ").substr(0, 60);
     }
@@ -287,8 +296,8 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var g = it.geometricBounds; // its middle goes where the studio's box has its middle
     it.translate((L + (b.l + b.r) / 2) - (g[0] + g[2]) / 2, (T - (b.t + b.b) / 2) - (g[1] + g[3]) / 2);
   }
-  function addImage(doc, im, L, T) {
-    var p = doc.placedItems.add();
+  function addImage(layer, im, L, T) {
+    var p = layer.placedItems.add();
     p.file = new File(String(im.path).replace(/\\/g, "/"));
     p.width = im.w || im.r - im.l; // its own size; turned afterwards
     p.height = im.h || im.b - im.t;
