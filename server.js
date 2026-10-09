@@ -13,9 +13,6 @@
 //
 // It only listens on this PC (127.0.0.1), so nobody else on the network can reach it.
 
-import express from 'express';
-import multer from 'multer';
-import { exec } from 'child_process';
 import fs from 'fs';
 import path from 'path';
 import http from 'http';
@@ -27,8 +24,6 @@ import { mergeItem, designMeta, ID_RE, newId } from './js/libitem.js';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
-const app = express();
-const upload = multer({ dest: 'uploads/' });
 
 const PORT = +process.env.STUDIO_PORT || 5190;
 const APP_DIR = __dirname;
@@ -393,46 +388,9 @@ async function handleNativeRequest(req, res) {
   }
 }
 
-// ---------------------------------------------------------------- express routes
+// ---------------------------------------------------------------- start
 
-// Route handler for converting vector AI/PDF to SVG using Inkscape
-app.post('/api/convert-ai', upload.single('aiFile'), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: 'No file uploaded.' });
-  }
-
-  const inputPath = req.file.path;
-  const outputPath = `${inputPath}.svg`;
- // Updated line (using full path to Inkscape):
-  const inkscapeExe = `"C:\\Program Files\\WindowsApps\\25415Inkscape.Inkscape_1.4.40.0_x64__9waqn51p1ttv2\\VFS\\ProgramFilesX64\\Inkscape\\bin\\inkscape.exe"`;
-  const command = `${inkscapeExe} "${inputPath}" --export-filename="${outputPath}"`;
-
-  exec(command, (error, stdout, stderr) => {
-    if (error) {
-      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-      return res.status(500).json({ success: false, error: 'Inkscape conversion failed.' });
-    }
-
-    fs.readFile(outputPath, 'utf8', (err, svgData) => {
-      if (fs.existsSync(inputPath)) fs.unlinkSync(inputPath);
-      if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath);
-
-      if (err) {
-        return res.status(500).json({ success: false, error: 'Failed to read converted SVG.' });
-      }
-
-      res.json({ success: true, svg: svgData });
-    });
-  });
-});
-
-// Fallback all other routes to native static/API logic
-app.use((req, res) => {
-  handleNativeRequest(req, res);
-});
-
-// Create and start server using express app handler
-const server = http.createServer(app);
+const server = http.createServer(handleNativeRequest);
 
 server.listen(PORT, "127.0.0.1", () => {
   console.log(`Crystal Studio running: http://localhost:${PORT}`);
