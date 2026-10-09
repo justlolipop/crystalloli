@@ -740,9 +740,9 @@ async function illustratorJob(all) {
 // in Illustrator. Works from the online studio too, as long as Start Studio.bat runs on this PC.
 async function openInIllustrator(all) {
   // now, while it's a click: start Crystal Studio on this PC (unless it's known to run), and the window to it
-  let up = false;
-  try { up = sessionStorage.getItem("crystal-up") === "1"; } catch (e) {}
-  if (!up) { try { location.href = START_LINK; } catch (e) {} }
+  let up = false; // worked on this computer before
+  try { up = localStorage.getItem("crystal-ever") === "1"; } catch (e) {}
+  try { location.href = START_LINK; } catch (e) {} // does nothing if it's already running
   const bridge = illustratorWindow();
   const files = [], used = new Set();
   const rows = all ? [...new Set(S.rows.map((_, i) => canon(i)))] : [S.row];
@@ -771,10 +771,10 @@ async function openInIllustrator(all) {
   }
   toast(up ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
   const r = await bridge.sendWhenUp({ job, files: svgs });
-  try { r && !r.old ? sessionStorage.setItem("crystal-up", "1") : sessionStorage.removeItem("crystal-up"); } catch (e) {}
+  try { if (r && !r.old) localStorage.setItem("crystal-ever", "1"); } catch (e) {}
   if (r) return toast(r.old ? r.error : r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
   bridge.cancel();
-  toast("Crystal Studio didn't start on this computer. Download › Set up this computer for Illustrator (once), then try again.", "bad");
+  toast(up ? "Crystal Studio didn't start. Try again." : "Crystal Studio didn't start on this computer. Download › Set up this computer for Illustrator (once), then try again.", "bad");
 }
 
 async function doExport(kind) {

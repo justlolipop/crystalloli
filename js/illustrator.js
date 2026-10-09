@@ -179,17 +179,21 @@ var OUTLINE_TEXT = JOB.outline !== false;
     for (i = doc.artboards.length - 1; i >= 0; i--) if (i !== keep) { try { doc.artboards.remove(i); } catch (e) {} }
     doc.artboards[0].artboardRect = [L, T, R, B];
     var box = [L, T, R, B];
-    for (i = 0; i < doc.layers.length; i++) cropIn(doc.layers[i], box);
+    // each cleaning step on its own: one odd piece of artwork mustn't stop the words going in
+    function step(what, fn) { try { fn(); } catch (e) { notes.push("Row " + r.row + ": " + what + " (" + e.message + ")"); } }
+    step("couldn't remove all the other designs", function () { for (var k = 0; k < doc.layers.length; k++) cropIn(doc.layers[k], box); });
     // the design's old words (live text): the studio's texts replace them
-    for (i = doc.textFrames.length - 1; i >= 0; i--) {
-      try { if (!outside(doc.textFrames[i].visibleBounds, box)) doc.textFrames[i].remove(); } catch (e) {}
-    }
+    step("couldn't remove the old words", function () {
+      for (var k = doc.textFrames.length - 1; k >= 0; k--) {
+        try { if (!outside(doc.textFrames[k].visibleBounds, box)) doc.textFrames[k].remove(); } catch (e) {}
+      }
+    });
     var boxes = [];
     for (i = 0; i < (r.remove || []).length; i++) {
       var bx = r.remove[i];
       boxes.push([L + bx.l - 1, T - bx.t + 1, L + bx.r + 1, T - bx.b - 1]);
     }
-    if (boxes.length) for (i = 0; i < doc.layers.length; i++) removeIn(doc.layers[i], boxes);
+    if (boxes.length) step("couldn't remove the logo", function () { for (var k = 0; k < doc.layers.length; k++) removeIn(doc.layers[k], boxes); });
     // the studio's words and pictures on a layer of their own, on top: the .ai's own layers may be
     // locked or hidden
     var layer = doc.layers.add();
@@ -214,13 +218,15 @@ var OUTLINE_TEXT = JOB.outline !== false;
     try { container.locked = false; } catch (e) {}
     var items = container.pageItems, k;
     for (k = items.length - 1; k >= 0; k--) {
-      var it = items[k];
-      if (it.parent !== container) continue; // only its own items; groups are looked into below
-      var vb = it.visibleBounds;
-      if (outside(vb, b)) { try { it.locked = false; it.remove(); } catch (e) {} continue; }
-      if (it.typename === "GroupItem" && !it.clipped && partly(vb, b)) cropIn(it, b);
+      try {
+        var it = items[k];
+        if (it.parent !== container) continue; // only its own items; groups are looked into below
+        var vb = it.visibleBounds;
+        if (outside(vb, b)) { it.locked = false; it.remove(); continue; }
+        if (it.typename === "GroupItem" && !it.clipped && partly(vb, b)) cropIn(it, b);
+      } catch (e) {} // an item that can't be measured or removed stays
     }
-    if (container.layers) for (k = 0; k < container.layers.length; k++) cropIn(container.layers[k], b);
+    try { if (container.layers) for (k = 0; k < container.layers.length; k++) cropIn(container.layers[k], b); } catch (e) {}
   }
 
   function finish(doc, r) {
@@ -240,14 +246,16 @@ var OUTLINE_TEXT = JOB.outline !== false;
   function removeIn(container, boxes) {
     var items = container.pageItems, k, j;
     for (k = items.length - 1; k >= 0; k--) {
-      var it = items[k];
-      if (it.parent !== container) continue; // only its own items; groups are looked into below
-      var vb = it.visibleBounds, best = 0;
-      for (j = 0; j < boxes.length; j++) best = Math.max(best, mostlyIn(vb, boxes[j]));
-      if (best >= 0.8) { try { it.locked = false; it.remove(); } catch (e) {} continue; }
-      if (best > 0 && it.typename === "GroupItem" && !it.clipped) removeIn(it, boxes);
+      try {
+        var it = items[k];
+        if (it.parent !== container) continue; // only its own items; groups are looked into below
+        var vb = it.visibleBounds, best = 0;
+        for (j = 0; j < boxes.length; j++) best = Math.max(best, mostlyIn(vb, boxes[j]));
+        if (best >= 0.8) { it.locked = false; it.remove(); continue; }
+        if (best > 0 && it.typename === "GroupItem" && !it.clipped) removeIn(it, boxes);
+      } catch (e) {}
     }
-    if (container.layers) for (k = 0; k < container.layers.length; k++) removeIn(container.layers[k], boxes);
+    try { if (container.layers) for (k = 0; k < container.layers.length; k++) removeIn(container.layers[k], boxes); } catch (e) {}
   }
 
   function rgb(hex, fallback) {

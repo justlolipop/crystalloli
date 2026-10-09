@@ -182,8 +182,9 @@ function saveFile(blob, name) {
 // computer; Chrome asks the first time, "Always allow" stops that), then the window to it waits
 // until it's up and hands it the crystals.
 const opened = (r, n) => r.ok ? `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`;
-const isUp = () => { try { return sessionStorage.getItem("crystal-up") === "1"; } catch (e) { return false; } };
-const setUp = (v) => { try { v ? sessionStorage.setItem("crystal-up", "1") : sessionStorage.removeItem("crystal-up"); } catch (e) {} };
+// worked on this computer before (then a failure isn't about setting it up)
+const everWorked = () => { try { return localStorage.getItem("crystal-ever") === "1"; } catch (e) { return false; } };
+const setWorked = () => { try { localStorage.setItem("crystal-ever", "1"); } catch (e) {} };
 
 // ai: open in Illustrator, through Crystal Studio on this PC (see to-illustrator.js), each saved as
 // .ai. Else: all crystals in one PDF.
@@ -195,8 +196,9 @@ async function generateAll(ai) {
   generating = true;
   btn.disabled = true;
   const say = (t) => { if (msg) msg.textContent = t; };
-  // now, while it's a click: start Crystal Studio (unless it's known to run), and the window to it
-  if (ai && !isUp()) { try { location.href = START_LINK; } catch (e) {} }
+  // now, while it's a click: start Crystal Studio (it does nothing if it's already running — the
+  // black window may have been closed since), and the window to it
+  if (ai) { try { location.href = START_LINK; } catch (e) {} }
   const bridge = ai ? illustratorWindow() : null;
   try {
     const files = [], used = new Set();
@@ -224,12 +226,13 @@ async function generateAll(ai) {
       const { job, without } = await vectorJob(list);
       const svgs = [];
       for (const i of without) svgs.push({ name: files[i].name, svg: await picture(files[i].c.it, files[i].c.g.jenis, files[i].c.t.row, 300, true) });
-      say(isUp() ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
+      say(everWorked() ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
       const r = await bridge.sendWhenUp({ job, files: svgs });
-      setUp(!!r && !r.old);
+      if (r && !r.old) setWorked();
       if (r && r.old) return say(r.error);
       if (r) return say(opened(r, files.length) + badNote);
       bridge.cancel();
+      if (everWorked()) return say("Crystal Studio didn't start. Click Open in Illustrator (.ai) again.");
       // only now: the computer isn't set up for it
       if (msg) msg.innerHTML = `Crystal Studio didn't start on this computer. Set it up once: <a class="gen-small" href="Crystal%20Studio%20Setup.bat" download="Crystal Studio Setup.bat">⚙ Set up this computer</a> (download, double-click it), then Open in Illustrator again.`;
       return;
