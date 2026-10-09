@@ -282,6 +282,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
+const BUILD = "2026-10-09b"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
@@ -345,13 +346,21 @@ async function handleNativeRequest(req, res) {
   try {
     if (p === "/api/fonts" && m === "GET") return send(res, 200, readJson(config().fontsFile, []));
 
+    // what Illustrator reported when it finished (the script writes it): for Crystal Studio's window
+    if (p === "/api/illustrator/result" && m === "GET") {
+      const dir = url.searchParams.get("folder") || "";
+      const full = path.resolve(dir);
+      if (!full.startsWith(path.resolve(OUTPUT_DIR) + path.sep)) return send(res, 400, { error: "Bad folder" });
+      const f = path.join(full, "_result.txt");
+      return send(res, 200, fs.existsSync(f) ? { done: true, text: fs.readFileSync(f, "utf8") } : { done: false });
+    }
     if (p === "/api/illustrator/svgs") {
       if (!allowedOrigin(req.headers.origin)) return send(res, 403, { error: "Not allowed" });
       if (m === "OPTIONS") { res.writeHead(204, corsHeaders(req)); return res.end(); }
       // "is Crystal Studio running on this PC?" — and which pages may send it crystals
       if (m === "GET") {
         const extra = readJson(CONFIG_FILE, {}).studioOrigins;
-        return send(res, 200, { ok: true, v: BRIDGE_VERSION, origins: [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])] }, corsHeaders(req));
+        return send(res, 200, { ok: true, v: BRIDGE_VERSION, build: BUILD, origins: [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])] }, corsHeaders(req));
       }
       if (m === "POST") return send(res, 200, openSvgsInIllustrator(await readBody(req)), corsHeaders(req));
     }

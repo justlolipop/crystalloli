@@ -735,6 +735,11 @@ async function illustratorJob(all) {
   return { folder, rows };
 }
 
+// Illustrator's report when it's done (passed on by Crystal Studio's window)
+window.addEventListener("message", (e) => {
+  if (e.data && e.data.type === "crystal-illustrator-report") toast("Illustrator: " + String(e.data.text || "").slice(0, 600));
+});
+
 // As you see it, opened in Illustrator and saved as .ai: the rows as Illustrator-ready .svg (words
 // editable, artwork at print quality) go to Crystal Studio's program on this PC, which opens them
 // in Illustrator. Works from the online studio too, as long as Start Studio.bat runs on this PC.
@@ -772,7 +777,7 @@ async function openInIllustrator(all) {
   toast(up ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
   const r = await bridge.sendWhenUp({ job, files: svgs });
   try { if (r && !r.old) localStorage.setItem("crystal-ever", "1"); } catch (e) {}
-  if (r) return toast(r.old ? r.error : r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
+  if (r) return toast(r.old ? r.error : r.ok ? `Illustrator is making ${files.length}… (saved as .ai in ${r.folder}) [Crystal Studio ${r.build}]` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
   bridge.cancel();
   toast(up ? "Crystal Studio didn't start. Try again." : "Crystal Studio didn't start on this computer. Download › Set up this computer for Illustrator (once), then try again.", "bad");
 }

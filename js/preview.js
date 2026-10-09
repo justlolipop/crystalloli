@@ -181,7 +181,14 @@ function saveFile(blob, name) {
 // tab): the click first asks Windows to start it (crystalstudio://open, set up once by ⚙ Set up this
 // computer; Chrome asks the first time, "Always allow" stops that), then the window to it waits
 // until it's up and hands it the crystals.
-const opened = (r, n) => r.ok ? `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`;
+const opened = (r, n) => (r.ok ? `Illustrator is making ${n} crystal${n === 1 ? "" : "s"}… (saved as .ai in ${r.folder})` : `Couldn't open Illustrator: ${r.error || "no answer"}`) +
+  ` [Crystal Studio ${r.build || "old"}]`;
+// Illustrator's report when it's done (passed on by Crystal Studio's window): shown next to the button
+window.addEventListener("message", (e) => {
+  if (!e.data || e.data.type !== "crystal-illustrator-report") return;
+  const m = document.getElementById("aGenMsg");
+  if (m) m.textContent = "Illustrator: " + String(e.data.text || "").slice(0, 1200);
+});
 // worked on this computer before (then a failure isn't about setting it up)
 const everWorked = () => { try { return localStorage.getItem("crystal-ever") === "1"; } catch (e) { return false; } };
 const setWorked = () => { try { localStorage.setItem("crystal-ever", "1"); } catch (e) {} };
