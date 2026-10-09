@@ -213,38 +213,65 @@ function illustratorExe() {
 // Opens Illustrator with the studio's script, which makes one .ai per row from the original
 // templates. The page only sends the rows' words and places; the script itself is this
 // program's own, and the templates come from the template folder set here.
-function runInIllustrator(body) {
+// the online database's copy of an imported .ai (js/store.js fileUrl), for a design the studio
+// imported on another computer
+const ONLINE_ORIGINAL = /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/crystal\/library\/orig-[a-z0-9-]+\.pdf$/;
+
+async function runInIllustrator(body) {
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!rows.length) return { ok: false, error: "Nothing to make." };
   if (rows.some((r) => !r || typeof r.file !== "string" || !TEMPLATE_EXT.test(r.file) || /[\\/]/.test(r.file))) {
     return { ok: false, error: "Bad template name." };
   }
   const d = new Date(), two = (n) => String(n).padStart(2, "0"); // this PC's own clock
-  const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}`;
+  const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}`;
   const outDir = path.join(OUTPUT_DIR, stamp);
   fs.mkdirSync(outDir, { recursive: true });
-  // open the exact .ai each design was imported from (the studio keeps a copy of it), not a file
-  // of the same name in the template folder, which may be a different version
+  // open the exact .ai each design was imported from (the studio keeps a copy of it, here or in the
+  // online database), not a file of the same name in the template folder, which may be another version
   const copies = new Map();
   for (const r of rows) {
-    const orig = typeof r.original === "string" && /^library\/orig-[a-z0-9-]+\.pdf$/.test(r.original) ? path.join(APP_DIR, r.original) : null;
+    const rel = typeof r.original === "string" && /^library\/orig-[a-z0-9-]+\.pdf$/.test(r.original) ? r.original : null;
+    const local = rel ? path.join(APP_DIR, rel) : null;
+    const url = typeof r.originalUrl === "string" && ONLINE_ORIGINAL.test(r.originalUrl) ? r.originalUrl : null;
     delete r.path;
-    if (!orig || !fs.existsSync(orig)) continue;
-    if (!copies.has(orig)) {
+    const key = rel || url;
+    if (!key) continue;
+    if (!copies.has(key)) {
       const dir = path.join(outDir, "_templates");
       fs.mkdirSync(dir, { recursive: true });
-      const dest = path.join(dir, path.basename(orig, ".pdf").replace(/^orig-/, "") + " - " + r.file.replace(/\.(pdf|svg)$/i, ".ai"));
-      fs.copyFileSync(orig, dest);
-      copies.set(orig, dest);
+      const dest = path.join(dir, path.basename(key, ".pdf").replace(/^orig-/, "") + " - " + r.file.replace(/\.(pdf|svg)$/i, ".ai"));
+      try {
+        if (local && fs.existsSync(local)) fs.copyFileSync(local, dest);
+        else if (url) {
+          const res = await fetch(url);
+          if (!res.ok) throw new Error(res.status + " " + res.statusText);
+          fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+        } else throw new Error("not found");
+        copies.set(key, dest);
+      } catch (e) { copies.set(key, null); }
     }
-    r.path = copies.get(orig);
+    if (copies.get(key)) r.path = copies.get(key);
+    // pictures added in the studio: saved next to the files, for Illustrator to place
+    if (Array.isArray(r.images)) {
+      r.images = r.images.map((im, i) => {
+        const m = /^data:image\/(png|jpeg|jpg|gif|webp);base64,(.+)$/.exec((im && im.src) || "");
+        if (!m) return null;
+        const dir = path.join(outDir, "_images");
+        fs.mkdirSync(dir, { recursive: true });
+        const file = path.join(dir, `${two(r.row)}-${i + 1}.${m[1] === "jpeg" ? "jpg" : m[1]}`);
+        fs.writeFileSync(file, Buffer.from(m[2], "base64"));
+        return { path: file, l: +im.l, t: +im.t, r: +im.r, b: +im.b, w: +im.w || +im.r - +im.l, h: +im.h || +im.b - +im.t, angle: +im.angle || 0, flipX: !!im.flipX };
+      }).filter(Boolean);
+    }
   }
-  const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, rows };
+  const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, outline: body.outline !== false && !rows.some((r) => r.master), rows };
   const jsx = path.join(outDir, "_make.jsx");
   fs.writeFileSync(jsx, illustratorScript(job));
   const exe = illustratorExe();
   if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC.", folder: outDir };
   try { spawn(exe, [jsx], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) { return { ok: false, error: "Couldn't start Illustrator: " + e.message, folder: outDir }; }
+  try { spawn(process.platform === "win32" ? "explorer" : "open", [outDir], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) {}
   return { ok: true, folder: outDir };
 }
 
@@ -330,7 +357,7 @@ async function handleNativeRequest(req, res) {
       // only this studio's own page may start Illustrator (not another website open in the browser)
       const o = req.headers.origin;
       if (o && !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return send(res, 403, { error: "Not allowed" });
-      return send(res, 200, runInIllustrator(await readBody(req)));
+      return send(res, 200, await runInIllustrator(await readBody(req)));
     }
 
     if (p === "/api/folder") {

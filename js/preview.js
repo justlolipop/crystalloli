@@ -13,6 +13,7 @@ import { libraryScene, setMaster, autoCleanAll, hiResBackground } from "./librar
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
+import { vectorJob } from "./vector-job.js";
 
 const DPI = 150;      // sharp enough to zoom in on the words
 const BASE_H = 380;   // the picture's height on the page before zooming (px)
@@ -215,17 +216,28 @@ async function generateAll(ai) {
     for (const c of cells) {
       say(`Drawing ${++n} of ${cells.length}…`);
       try {
-        const data = await picture(c.it, c.g.jenis, c.t.row, 300, ai);
+        // Illustrator: made from the original .ai (vectorJob below); the picture only for a design
+        // without one
+        const data = ai ? null : await picture(c.it, c.g.jenis, c.t.row, 300, false);
         let name = [short(c.g.jenis), caption(c.t.row)].filter(Boolean).join(" - ").replace(/\//g, "-").replace(/[\\:*?"<>|]+/g, "").replace(/\s+/g, " ").trim().slice(0, 120) + ` x${c.t.qty}`;
         for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
         used.add(name);
-        files.push({ name, data, w: c.it.width, h: c.it.height });
+        files.push({ name, data, w: c.it.width, h: c.it.height, c });
       } catch (e) { bad++; }
     }
     const badNote = bad ? ` (${bad} couldn't be drawn)` : "";
     if (ai) {
+      say("Preparing the Illustrator files…");
+      const list = [];
+      for (const f of files) {
+        const scene = await libraryScene(f.c.it, f.c.t.row, columns), own = custom[rowKey(f.c.g.jenis, f.c.t.row)];
+        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images } : { scene }, name: f.name });
+      }
+      const { job, without } = await vectorJob(list);
+      const svgs = [];
+      for (const i of without) svgs.push({ name: files[i].name, svg: await picture(files[i].c.it, files[i].c.g.jenis, files[i].c.t.row, 300, true) });
       say("Opening in Illustrator…");
-      const r = await bridge.send(files.map((f) => ({ name: f.name, svg: f.data })));
+      const r = await bridge.send({ job, files: svgs });
       if (r) return say(opened(r, files.length) + badNote);
       bridge.cancel();
       startMode = true; // not running here: the button starts it

@@ -11,6 +11,7 @@ import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
+import { vectorJob } from "./vector-job.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
 import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
 
@@ -748,19 +749,27 @@ async function openInIllustrator(all) {
     const key = r === S.row ? S.key : keyFor(r);
     if (!itemOf(key)) continue;
     toast(`Making ${n + 1} of ${rows.length}…`);
-    const p = await printImages(key, r);
-    if (!p) continue;
+    const sc = await sceneFor(key, r);
+    if (!sc) continue;
     const st = r === S.row && key === S.key ? editor.currentState() : S.edits[r + "|" + key];
-    const svg = await editor.svgOffscreen(st ? { state: st, images: p.images } : { scene: { ...p.sc, images: p.images } });
     const rw = S.rows[r] || {};
     let name = safeName([String(rw.jenis_plak || "").replace(/^\s*CRYSTAL\s*\/\s*/i, ""), rw.event_line_1 || rw.position || `row ${r + 1}`].filter(Boolean).join(" - ").replace(/\//g, "-"));
     for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
     used.add(name);
-    files.push({ name, svg });
+    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images } : { scene: sc } });
   }
   if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
+  // made from the original .ai in Illustrator (artwork and words editable); a design without one
+  // goes as .svg (the artwork as a picture)
+  toast("Preparing the Illustrator files…");
+  const { job, without } = await vectorJob(files.map((f) => ({ item: f.item, entry: f.entry, name: f.name })));
+  const svgs = [];
+  for (const i of without) {
+    const f = files[i], p = await printImages(f.key, f.r);
+    if (p) svgs.push({ name: f.name, svg: await editor.svgOffscreen(f.entry.state ? { state: f.entry.state, images: p.images } : { scene: { ...p.sc, images: p.images } }) });
+  }
   toast("Opening in Illustrator…");
-  let r = await bridge.send(files);
+  let r = await bridge.send({ job, files: svgs });
   if (!r) {
     bridge.cancel();
     // not running: start it (a PC set up once with Install Crystal Studio link.bat), or download them
@@ -775,7 +784,10 @@ async function openInIllustrator(all) {
   // each its own file, to open in Illustrator by hand (or by themselves: Illustrator as the app for
   // .svg, and Chrome's "Always open files of this type")
   for (const f of files) {
-    downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
+    const p = await printImages(f.key, f.r);
+    if (!p) continue;
+    const svg = await editor.svgOffscreen(f.entry.state ? { state: f.entry.state, images: p.images } : { scene: { ...p.sc, images: p.images } });
+    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), f.name + ".svg");
     await new Promise((res) => setTimeout(res, 350));
   }
   toast("Downloaded: open in Illustrator (words editable), then Save As .ai.");
