@@ -487,11 +487,14 @@ function zoomBy(f) {
 
 // ------------------------------------------------------------------ snapping guides
 
+// Only left-right: a text dragged near the middle (or under another text) lines up with it. No
+// up-down snapping: texts sit just above or below the crystal's middle and were pulled onto it.
+// Hold Alt while dragging to place it freely.
 function snap(e) {
   const o = e.target;
-  if (!o) return;
-  const th = 6 / ed.zoom;
   ed.guides = [];
+  if (!o || (e.e && e.e.altKey)) return;
+  const th = 6 / ed.zoom;
   const c = o.getCenterPoint();
   const xs = [ed.W / 2];
   for (const p of cv.getObjects()) {
@@ -500,10 +503,9 @@ function snap(e) {
   }
   let bx = null;
   for (const v of xs) if (Math.abs(v - c.x) < th && (bx === null || Math.abs(v - c.x) < Math.abs(bx - c.x))) bx = v;
-  const by = Math.abs(ed.H / 2 - c.y) < th ? ed.H / 2 : null;
-  if (bx !== null) ed.guides.push({ x: bx });
-  if (by !== null) ed.guides.push({ y: by });
-  if (bx !== null || by !== null) o.setPositionByOrigin(new fabric.Point(bx ?? c.x, by ?? c.y), "center", "center");
+  if (bx === null) return;
+  ed.guides.push({ x: bx });
+  o.setPositionByOrigin(new fabric.Point(bx, c.y), "center", "center");
 }
 
 function drawGuides() {
