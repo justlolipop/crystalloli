@@ -749,7 +749,7 @@ async function openInIllustrator(all) {
       toast("Starting Crystal Studio on this PC…");
       const again = illustratorWindow();
       r = await again.startThenSend(files);
-      if (!r) { again.cancel(); toast("Crystal Studio didn't start. On this PC, run “Install Crystal Studio link.bat” once (in the Crystal Studio folder), or Start Studio.bat.", "bad"); }
+      if (!r) { again.cancel(); toast("Crystal Studio didn't start: this computer isn't set up yet. Download › Set up this computer for Illustrator, double-click that file once, then try again.", "bad"); }
     }
   }
   try { localStorage.setItem("crystal-local", r ? "yes" : "no"); } catch (e) {}
@@ -765,10 +765,19 @@ async function openInIllustrator(all) {
 
 async function doExport(kind) {
   editor.closeMenus();
-  if (!S.key) return toast("Nothing to download yet — pick a design first.", "bad");
+  if (!S.key && kind !== "setup") return toast("Nothing to download yet — pick a design first.", "bad");
   try {
     if (kind === "pdf" || kind === "pdf-all") return await exportPdf(kind === "pdf-all");
     if (kind === "open-ai" || kind === "open-ai-all") return await openInIllustrator(kind === "open-ai-all");
+    if (kind === "setup") {
+      const a = document.createElement("a");
+      a.href = "Crystal%20Studio%20Setup.bat";
+      a.download = "Crystal Studio Setup.bat";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      return toast("Double-click the downloaded file once (Windows may warn: More info › Run anyway). Then Open in Illustrator works on this computer.");
+    }
     const name = safeName(S.design.name) + (S.rows.length > 1 ? ` - row ${S.row + 1}` : "");
     if (kind === "ai" || kind === "ai-all") {
       toast("Making the Illustrator script…");

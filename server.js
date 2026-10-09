@@ -43,7 +43,7 @@ const TEMPLATE_EXT = /\.(ai|pdf|svg)$/i;
 const MIME = {
   ".html": "text/html; charset=utf-8", ".css": "text/css; charset=utf-8", ".js": "text/javascript; charset=utf-8",
   ".json": "application/json; charset=utf-8", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-  ".svg": "image/svg+xml", ".pdf": "application/pdf", ".ai": "application/pdf", ".ico": "image/x-icon",
+  ".svg": "image/svg+xml", ".pdf": "application/pdf", ".ai": "application/pdf", ".ico": "image/x-icon", ".bat": "application/octet-stream",
 };
 
 
@@ -385,6 +385,7 @@ async function handleNativeRequest(req, res) {
     if (p === "/preview.html") return sendFile(res, APP_DIR, "preview.html");
     // the small window that takes crystals from the online studio / order website to Illustrator
     if (p === "/illustrator.html") return sendFile(res, APP_DIR, "illustrator.html");
+    if (p === "/Crystal Studio Setup.bat") return sendFile(res, APP_DIR, "Crystal Studio Setup.bat");
     if (p === "/app.css" || p.startsWith("/js/")) return sendFile(res, APP_DIR, p.slice(1));
     return send(res, 404, { error: "Not found" });
   } catch (e) {
