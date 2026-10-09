@@ -118,7 +118,7 @@ async function showAll(groups) {
     <div class="abar">
       <span class="muted">${ready} crystal${ready === 1 ? "" : "s"} · click one to see it alone</span>
       <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
-      <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal as a picture (PNG, 300 DPI, see-through background), one file each">⬇ All crystals (PNG)</button>
+      <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal in one PDF, a page each at its real size (300 DPI), to check, send or print">⬇ All crystals (PDF)</button>
       <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words still editable, artwork at print quality). Needs Crystal Studio running on this PC (Start Studio.bat); without it they download as a .zip instead.">Open in Illustrator (.ai)</button>
       <span id="aGenMsg" class="muted"></span>
     </div>
@@ -252,7 +252,7 @@ async function generateAll(ai) {
         let name = [short(c.g.jenis), caption(c.t.row)].filter(Boolean).join(" - ").replace(/\//g, "-").replace(/[\\:*?"<>|]+/g, "").replace(/\s+/g, " ").trim().slice(0, 120) + ` x${c.t.qty}`;
         for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
         used.add(name);
-        files.push({ name, data });
+        files.push({ name, data, w: c.it.width, h: c.it.height });
       } catch (e) { bad++; }
     }
     const badNote = bad ? ` (${bad} couldn't be drawn)` : "";
@@ -270,12 +270,19 @@ async function generateAll(ai) {
       sayHtml(`Crystal Studio isn't running on this PC.${badNote} <a href="${START_LINK}" id="aStart" class="gen-link">▶ Start Crystal Studio</a> · <a href="#" id="aDownload">Download the files instead</a> · ${SETUP_LINK}`);
       return;
     }
-    say(`Downloading ${files.length} picture${files.length === 1 ? "" : "s"}…`);
+    // all in one PDF: a page per crystal, at its real size (pt), the picture at 300 DPI
+    if (!window.jspdf) return say("Couldn't make the PDF (PDF tool not loaded).");
+    say("Making the PDF…");
+    let pdf = null;
     for (const f of files) {
-      saveFile(await (await fetch(f.data)).blob(), f.name + ".png");
-      await new Promise((r) => setTimeout(r, 350));
+      const o = f.w > f.h ? "landscape" : "portrait";
+      if (!pdf) pdf = new window.jspdf.jsPDF({ unit: "pt", format: [f.w, f.h], orientation: o, compress: true });
+      else pdf.addPage([f.w, f.h], o);
+      pdf.addImage(f.data, "PNG", 0, 0, f.w, f.h, undefined, "FAST");
     }
-    say(`Done: ${files.length} picture${files.length === 1 ? "" : "s"} (PNG) downloaded${badNote}.`);
+    const title = String(order || "crystals").replace(/[\\/:*?"<>|]+/g, " ").trim();
+    saveFile(pdf.output("blob"), `${title} - crystals.pdf`);
+    say(`Done: ${files.length} crystal${files.length === 1 ? "" : "s"} in one PDF${badNote}.`);
   } finally {
     generating = false;
     if (btn.isConnected) btn.disabled = false;
