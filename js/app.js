@@ -10,7 +10,7 @@ import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, M
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
-import { illustratorWindow } from "./to-illustrator.js";
+import { illustratorWindow, START_LINK, startStudioLink } from "./to-illustrator.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
 import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
 
@@ -718,7 +718,10 @@ async function illustratorJob(all) {
 // editable, artwork at print quality) go to Crystal Studio's program on this PC, which opens them
 // in Illustrator. Works from the online studio too, as long as Start Studio.bat runs on this PC.
 async function openInIllustrator(all) {
-  const bridge = illustratorWindow(); // opened now, while it's a click
+  // opened now, while it's a click; not on a PC where Crystal Studio wasn't running last time
+  let wasOff = false;
+  try { wasOff = localStorage.getItem("crystal-local") === "no"; } catch (e) {}
+  const bridge = wasOff ? { send: async () => null, cancel() {} } : illustratorWindow();
   const files = [], used = new Set();
   const rows = all ? [...new Set(S.rows.map((_, i) => canon(i)))] : [S.row];
   for (const [n, r] of rows.entries()) {
@@ -737,18 +740,27 @@ async function openInIllustrator(all) {
   }
   if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
   toast("Opening in Illustrator…");
-  const r = await bridge.send(files);
-  if (r) return toast(r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
-  // without Start Studio.bat: download them (one .svg, or a .zip), to open in Illustrator by hand
-  {
-    if (files.length === 1 || !window.JSZip) for (const f of files) downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
-    else {
-      const zip = new JSZip();
-      for (const f of files) zip.file(f.name + ".svg", f.svg);
-      downloadBlob(await zip.generateAsync({ type: "blob" }), safeName(S.design.name) + " - for Illustrator.zip");
+  let r = await bridge.send(files);
+  if (!r) {
+    bridge.cancel();
+    // not running: start it (a PC set up once with Install Crystal Studio link.bat), or download them
+    if (await ask("Crystal Studio isn't running on this PC. Start it now? (Chrome may ask “Open …?” first: choose Open.)\n\nCancel downloads the files instead.", "Start Crystal Studio")) {
+      startStudioLink();
+      toast("Starting Crystal Studio on this PC…");
+      const again = illustratorWindow();
+      r = await again.startThenSend(files);
+      if (!r) { again.cancel(); toast("Crystal Studio didn't start. On this PC, run “Install Crystal Studio link.bat” once (in the Crystal Studio folder), or Start Studio.bat.", "bad"); }
     }
-    return toast("Downloaded. Open it in Illustrator (words editable), then File › Save As › .ai. With Start Studio.bat running, it opens in Illustrator by itself.");
   }
+  try { localStorage.setItem("crystal-local", r ? "yes" : "no"); } catch (e) {}
+  if (r) return toast(r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
+  // each its own file, to open in Illustrator by hand (or by themselves: Illustrator as the app for
+  // .svg, and Chrome's "Always open files of this type")
+  for (const f of files) {
+    downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
+    await new Promise((res) => setTimeout(res, 350));
+  }
+  toast("Downloaded: open in Illustrator (words editable), then Save As .ai.");
 }
 
 async function doExport(kind) {

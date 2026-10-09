@@ -249,7 +249,7 @@ function runInIllustrator(body) {
   fs.writeFileSync(jsx, illustratorScript(job));
   const exe = illustratorExe();
   if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC.", folder: outDir };
-  spawn(exe, [jsx], { detached: true, stdio: "ignore" }).unref();
+  try { spawn(exe, [jsx], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) { return { ok: false, error: "Couldn't start Illustrator: " + e.message, folder: outDir }; }
   return { ok: true, folder: outDir };
 }
 
@@ -304,9 +304,10 @@ app.userInteractionLevel = UserInteractionLevel.DISPLAYALERTS;
   const script = path.join(outDir, "_open.jsx");
   fs.writeFileSync(script, jsx);
   const exe = illustratorExe();
-  try { spawn(process.platform === "win32" ? "explorer" : "open", [outDir], { detached: true, stdio: "ignore" }).unref(); } catch (e) {}
+  // (a program that can't be started reports it later, as an "error": caught, or it would stop Crystal Studio)
+  try { spawn(process.platform === "win32" ? "explorer" : "open", [outDir], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) {}
   if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC. The .svg files are in " + outDir, folder: outDir };
-  spawn(exe, [script], { detached: true, stdio: "ignore" }).unref();
+  try { spawn(exe, [script], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) { return { ok: false, error: "Couldn't start Illustrator: " + e.message, folder: outDir }; }
   return { ok: true, folder: outDir, count: paths.length };
 }
 
