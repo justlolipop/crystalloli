@@ -17,6 +17,7 @@
 .tplnow{margin:0 0 8px}
 /* what only the admin sees (🔒 Admin, the password): changing designs for everyone */
 body:not(.admin) .admin-only{display:none !important}
+body.teacher .ai-only,body.teacher #adminBtn{display:none !important}
 .sources .src{cursor:pointer}
 .sources .src.on{border-color:var(--acc2,var(--acc));box-shadow:0 0 8px rgba(166,77,255,.35)}
 .srcdesigns{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
@@ -56,12 +57,12 @@ body:not(.admin) .admin-only{display:none !important}
         <button data-export="png" role="menuitem">PNG for DTF printing<small>This design, 300 dpi, transparent background</small></button>
         <button data-export="pdf" role="menuitem">PDF<small>This design, 300 dpi, real size</small></button>
         <button data-export="pdf-all" role="menuitem">PDF of every row<small>One page per Excel row</small></button>
-        <button data-export="open-ai" role="menuitem">Open in Illustrator (.ai)<small>This row, as you see it, words editable. Opens straight in Illustrator with Start Studio.bat running; else downloads</small></button>
-        <button data-export="open-ai-all" role="menuitem">Open in Illustrator — every row (.ai)<small>Each Excel row saved as .ai, as you see it</small></button>
-        <button data-export="setup" role="menuitem">Set up this computer for Illustrator…<small>One file: double-click it once, then Open in Illustrator works here</small></button>
-        <button data-export="ai" role="menuitem">For Illustrator — vector .ai<small>This row, made from your original .ai (HD, cut line kept)</small></button>
-        <button data-export="ai-all" role="menuitem">For Illustrator — every row<small>One vector .ai per Excel row</small></button>
-        <button data-export="svg" role="menuitem">For Illustrator (.svg)<small>Opens in Illustrator with the text still editable</small></button>
+        <button class="ai-only" data-export="open-ai" role="menuitem">Open in Illustrator (.ai)<small>This row, as you see it, words editable. Opens straight in Illustrator with Start Studio.bat running; else downloads</small></button>
+        <button class="ai-only" data-export="open-ai-all" role="menuitem">Open in Illustrator — every row (.ai)<small>Each Excel row saved as .ai, as you see it</small></button>
+        <button class="ai-only" data-export="setup" role="menuitem">Set up this computer for Illustrator…<small>One file: double-click it once, then Open in Illustrator works here</small></button>
+        <button class="ai-only" data-export="ai" role="menuitem">For Illustrator — vector .ai<small>This row, made from your original .ai (HD, cut line kept)</small></button>
+        <button class="ai-only" data-export="ai-all" role="menuitem">For Illustrator — every row<small>One vector .ai per Excel row</small></button>
+        <button class="ai-only" data-export="svg" role="menuitem">For Illustrator (.svg)<small>Opens in Illustrator with the text still editable</small></button>
       </div>
     </div>
   </header>

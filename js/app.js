@@ -785,6 +785,7 @@ async function openInIllustrator(all) {
 async function doExport(kind) {
   editor.closeMenus();
   if (!S.key && kind !== "setup") return toast("Nothing to download yet — pick a design first.", "bad");
+  if (document.body.classList.contains("teacher") && !["png", "pdf", "pdf-all"].includes(kind)) return;
   try {
     if (kind === "pdf" || kind === "pdf-all") return await exportPdf(kind === "pdf-all");
     if (kind === "open-ai" || kind === "open-ai-all") return await openInIllustrator(kind === "open-ai-all");
@@ -1002,6 +1003,8 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.rows = opened.rows.map((r) => Object.fromEntries(keys.map((k) => [k, String(r[k] ?? "")])));
     S.sourceName = opened.name || "Order";
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
+    // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
+    if (opened.role === "teacher") { document.body.classList.add("teacher"); unlocked = false; setAdmin(false); }
     S.origKeys = S.rows.map(contentKey);
     $("srcHint").textContent = `${S.sourceName} · ${S.rows.length} row${S.rows.length === 1 ? "" : "s"} from the order website`;
   }
