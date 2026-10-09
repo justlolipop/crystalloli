@@ -174,6 +174,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var f = r.path ? new File(String(r.path).replace(/\\/g, "/")) : null;
     if (!f || !f.exists) throw new Error("the original .ai of " + r.file + " wasn't found");
     var doc = app.open(f), i;
+    docCMYK = doc.documentColorSpace === DocumentColorSpace.CMYK;
     app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
     var keep = Math.min((r.page || 1) - 1, doc.artboards.length - 1);
     var ab = doc.artboards[keep].artboardRect; // [left, top, right, bottom], y up
@@ -215,7 +216,11 @@ var OUTLINE_TEXT = JOB.outline !== false;
     for (i = 0; i < r.texts.length; i++) {
       try { addStyled(layer, r.texts[i].now, L, T); added++; } catch (e) { notes.push("Row " + r.row + ": a text couldn't be added (" + e.message + ")"); }
     }
-    notes.push("Row " + r.row + ": " + added + " of " + r.texts.length + " texts added.");
+    notes.push("Row " + r.row + ": " + added + " of " + r.texts.length + " texts added" + (docCMYK ? " (CMYK file)" : " (RGB file)") + ".");
+    try { // where the first one landed, from the artboard's top-left (for checking)
+      var g0 = layer.pageItems[layer.pageItems.length - 1].geometricBounds;
+      notes.push("First text at x " + Math.round(g0[0]) + "-" + Math.round(g0[2]) + ", y " + Math.round(-g0[1]) + "-" + Math.round(-g0[3]) + " of a " + Math.round(r.region[2]) + " x " + Math.round(r.region[3]) + " artboard.");
+    } catch (e) {}
     finish(doc, r);
   }
 
@@ -266,31 +271,43 @@ var OUTLINE_TEXT = JOB.outline !== false;
     try { if (container.layers) for (k = 0; k < container.layers.length; k++) removeIn(container.layers[k], boxes); } catch (e) {}
   }
 
+  // a colour in the document's own colour mode (a CMYK document, usual for print, may refuse RGB)
+  var docCMYK = false;
   function rgb(hex, fallback) {
     if (!hex) return fallback || null;
     hex = String(hex).replace(/^#/, "");
-    var c = new RGBColor();
-    c.red = parseInt(hex.substr(0, 2), 16); c.green = parseInt(hex.substr(2, 2), 16); c.blue = parseInt(hex.substr(4, 2), 16);
-    return c;
+    var R = parseInt(hex.substr(0, 2), 16), G = parseInt(hex.substr(2, 2), 16), Bl = parseInt(hex.substr(4, 2), 16);
+    if (docCMYK) {
+      var r1 = R / 255, g1 = G / 255, b1 = Bl / 255, k = 1 - Math.max(r1, g1, b1), c = new CMYKColor();
+      c.black = k * 100;
+      c.cyan = k >= 1 ? 0 : (1 - r1 - k) / (1 - k) * 100;
+      c.magenta = k >= 1 ? 0 : (1 - g1 - k) / (1 - k) * 100;
+      c.yellow = k >= 1 ? 0 : (1 - b1 - k) / (1 - k) * 100;
+      return c;
+    }
+    var c2 = new RGBColor();
+    c2.red = R; c2.green = G; c2.blue = Bl;
+    return c2;
   }
 
   // one studio text as editable Illustrator text, in its own look. An outline drawn behind the
   // letters (as the studio does) needs a copy behind with that outline: they're grouped, named
   // after the words. Change the words in each frame of the group.
+  var failed = {}; // a setting Illustrator refused, reported once
   function frame(layer, b, strokeHex, strokeW) {
     var tf = layer.textFrames.add();
     tf.contents = String(b.text).replace(/\r?\n/g, "\r");
     var ca = tf.textRange.characterAttributes;
-    // each setting on its own: one Illustrator doesn't take mustn't lose the whole text
-    function set(fn) { try { fn(); } catch (e) {} }
-    set(function () { if (b.ps) ca.textFont = app.textFonts.getByName(b.ps); });
-    set(function () { ca.size = b.size; });
-    set(function () { ca.horizontalScale = (b.hScale || 1) * 100; });
-    set(function () { ca.tracking = b.tracking || 0; });
-    set(function () { ca.autoLeading = false; ca.leading = b.size * (b.lineHeight || 1) * 1.13; });
-    set(function () { var c = rgb(b.fill); if (!c) { c = new RGBColor(); c.red = c.green = c.blue = 0; } ca.fillColor = c; });
-    set(function () { if (strokeHex && strokeW > 0) { ca.strokeColor = rgb(strokeHex); ca.strokeWeight = strokeW; } else ca.strokeColor = new NoColor(); });
-    set(function () { tf.textRange.paragraphAttributes.justification = b.align === "center" ? Justification.CENTER : b.align === "right" ? Justification.RIGHT : Justification.LEFT; });
+    // each setting on its own: one Illustrator refuses mustn't lose the whole text
+    function set(what, fn) { try { fn(); } catch (e) { if (!failed[what]) { failed[what] = 1; notes.push("Couldn't set the " + what + ": " + e.message); } } }
+    set("font " + b.ps, function () { if (b.ps) ca.textFont = app.textFonts.getByName(b.ps); });
+    set("size", function () { ca.size = b.size; });
+    set("width", function () { ca.horizontalScale = (b.hScale || 1) * 100; });
+    set("tracking", function () { ca.tracking = b.tracking || 0; });
+    set("line spacing", function () { ca.autoLeading = false; ca.leading = b.size * (b.lineHeight || 1) * 1.13; });
+    set("colour", function () { ca.fillColor = rgb(b.fill || "#000000"); });
+    set("outline", function () { if (strokeHex && strokeW > 0) { ca.strokeColor = rgb(strokeHex); ca.strokeWeight = strokeW; } else ca.strokeColor = new NoColor(); });
+    set("alignment", function () { tf.textRange.paragraphAttributes.justification = b.align === "center" ? Justification.CENTER : b.align === "right" ? Justification.RIGHT : Justification.LEFT; });
     return tf;
   }
   function addStyled(layer, b, L, T) {
