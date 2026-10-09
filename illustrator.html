@@ -22,8 +22,8 @@
 (async () => {
   const msg = document.getElementById("msg"), sub = document.getElementById("sub");
   const tell = (m) => { try { window.opener && window.opener.postMessage(m, "*"); } catch (e) {} };
-  let origins = [];
-  try { origins = (await (await fetch("/api/illustrator/svgs")).json()).origins || []; } catch (e) {}
+  let origins = [], v = 1;
+  try { const info = await (await fetch("/api/illustrator/svgs")).json(); origins = info.origins || []; v = info.v || 1; } catch (e) {}
   const allowed = (o) => o === location.origin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) || origins.includes(o);
   let busy = false;
   window.addEventListener("message", async (e) => {
@@ -51,7 +51,7 @@
       msg.textContent = "Couldn't open Illustrator: " + (r.error || "no answer");
     }
   });
-  tell({ type: "crystal-illustrator-ready" });
+  tell({ type: "crystal-illustrator-ready", v });
 })();
 </script>
 </body>

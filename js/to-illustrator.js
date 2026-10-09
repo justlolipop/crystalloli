@@ -41,7 +41,13 @@ export function illustratorWindow() {
   }
   return {
     async send(what) {
-      if (!(await first)) return null;
+      const ready = await first;
+      if (!ready) return null;
+      // an older Crystal Studio on this PC (before it made crystals from their original .ai)
+      if (!Array.isArray(what) && what.job && what.job.rows && what.job.rows.length && !(ready.v >= 2)) {
+        try { win.close(); } catch (e) {}
+        return { ok: false, old: true, error: "Crystal Studio on this computer is an old version: close its black window, then click Open in Illustrator again (it updates itself when it starts)." };
+      }
       return deliver(what);
     },
     cancel() { try { win && win.close(); } catch (e) {} },

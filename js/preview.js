@@ -121,6 +121,7 @@ async function showAll(groups) {
       <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
       <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal in one PDF, a page each at its real size (300 DPI), to check, send or print">⬇ All crystals (PDF)</button>
       <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words editable, artwork at print quality)">${startMode ? "▶ Start Crystal Studio" : "Open in Illustrator (.ai)"}</button>
+      <a class="gen-small" href="Crystal%20Studio%20Setup.bat" download="Crystal Studio Setup.bat" title="Once on a computer that should open crystals in Illustrator: download, then double-click it (Windows may warn: More info › Run anyway)">⚙ Set up this computer</a>
       <span id="aGenMsg" class="muted"></span>
     </div>
     <div class="grid" id="aGrid" style="--th:${Math.round(THUMB_H * allZoom)}px">${cells.map((c, n) => `
@@ -238,6 +239,7 @@ async function generateAll(ai) {
       for (const i of without) svgs.push({ name: files[i].name, svg: await picture(files[i].c.it, files[i].c.g.jenis, files[i].c.t.row, 300, true) });
       say("Opening in Illustrator…");
       const r = await bridge.send({ job, files: svgs });
+      if (r && r.old) { startMode = true; btn.textContent = "▶ Start Crystal Studio"; return say(r.error); }
       if (r) return say(opened(r, files.length) + badNote);
       bridge.cancel();
       startMode = true; // not running here: the button starts it
