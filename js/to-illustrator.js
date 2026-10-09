@@ -28,18 +28,21 @@ export function illustratorWindow() {
     addEventListener("message", on);
   });
   const first = waitFor("crystal-illustrator-ready", 6000);
-  async function deliver(files) {
-    const done = waitFor("crystal-illustrator-done", 120000);
-    win.postMessage({ type: "crystal-illustrator-files", files }, BASE);
+  // what: { job, files } — crystals made from their original .ai (see vector-job.js) and/or .svg
+  // files ({ name, svg }); or just an array of .svg files
+  async function deliver(what) {
+    const done = waitFor("crystal-illustrator-done", 300000);
+    const msg = Array.isArray(what) ? { files: what } : { job: what.job || null, files: what.files || [] };
+    win.postMessage({ type: "crystal-illustrator-files", ...msg }, BASE);
     const m = await done;
     const r = (m && m.result) || { ok: false, error: "no answer from Crystal Studio on this PC" };
     if (!r.ok) setTimeout(() => { try { win.close(); } catch (e) {} }, 300); // this page says why
     return r;
   }
   return {
-    async send(files) {
+    async send(what) {
       if (!(await first)) return null;
-      return deliver(files);
+      return deliver(what);
     },
     cancel() { try { win && win.close(); } catch (e) {} },
   };

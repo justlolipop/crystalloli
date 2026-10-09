@@ -29,12 +29,18 @@
   window.addEventListener("message", async (e) => {
     if (!e.data || e.data.type !== "crystal-illustrator-files" || busy || !allowed(e.origin) || e.source !== window.opener) return;
     busy = true;
+    // job: crystals made from their original .ai (editable artwork and words); files: as .svg
+    const job = e.data.job && Array.isArray(e.data.job.rows) && e.data.job.rows.length ? e.data.job : null;
     const files = Array.isArray(e.data.files) ? e.data.files : [];
-    msg.textContent = `Opening ${files.length} crystal${files.length === 1 ? "" : "s"} in Illustrator…`;
-    let r;
-    try {
-      r = await (await fetch("/api/illustrator/svgs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ files }) })).json();
-    } catch (err) { r = { ok: false, error: err.message }; }
+    const n = (job ? job.rows.length : 0) + files.length;
+    msg.textContent = `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator…`;
+    const post = async (url, body) => {
+      try { return await (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json(); }
+      catch (err) { return { ok: false, error: err.message }; }
+    };
+    const a = job ? await post("/api/illustrator", job) : null;
+    const b = files.length ? await post("/api/illustrator/svgs", { files }) : null;
+    const r = (!a ? b : !b ? a : { ok: a.ok && b.ok, folder: a.folder, error: a.error || b.error }) || { ok: false, error: "nothing to open" };
     tell({ type: "crystal-illustrator-done", result: r });
     if (r.ok) {
       msg.textContent = "Illustrator is opening them.";

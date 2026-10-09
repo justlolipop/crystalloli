@@ -18,11 +18,11 @@ const SCRIPT = String.raw`// Crystal Studio -> Illustrator
 // own .ai in a folder you choose. The artwork, pattern and cut line stay vector, as drawn.
 #target illustrator
 
+var JOB = __JOB__;
+
 // true: the words are turned into shapes (Type > Create Outlines), so a PC without your fonts
 // prints them exactly the same. false: the words stay editable.
-var OUTLINE_TEXT = true;
-
-var JOB = __JOB__;
+var OUTLINE_TEXT = JOB.outline !== false;
 
 (function () {
   var outDir = JOB.outDir ? new Folder(String(JOB.outDir).replace(/\\/g, "/")) : Folder.selectDialog("Crystal Studio: choose a folder for the finished .ai files");
@@ -133,7 +133,24 @@ var JOB = __JOB__;
     }
     doc.artboards[0].artboardRect = [L, T, R, B];
 
-    var frames = [], i;
+    var i;
+    // master template (r.master): the design keeps only its artwork — its logo and old words come
+    // out — and gets the studio's texts (and pictures added there), editable, in their own look
+    if (r.master) {
+      for (i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].remove(); } catch (e) {} }
+      var boxes = [];
+      for (i = 0; i < (r.remove || []).length; i++) {
+        var bx = r.remove[i];
+        boxes.push([L + bx.l - 1, T - bx.t + 1, L + bx.r + 1, T - bx.b - 1]);
+      }
+      if (boxes.length) for (i = 0; i < doc.layers.length; i++) removeIn(doc.layers[i], boxes);
+      for (i = 0; i < (r.images || []).length; i++) { try { addImage(doc, r.images[i], L, T); } catch (e) { notes.push("Row " + r.row + ": a picture couldn't be placed (" + e.message + ")"); } }
+      for (i = 0; i < r.texts.length; i++) addStyled(doc, r.texts[i].now, L, T);
+      finish(doc, r);
+      return;
+    }
+
+    var frames = [];
     for (i = 0; i < doc.textFrames.length; i++) {
       var tf = doc.textFrames[i], g = tf.geometricBounds;
       frames.push({ tf: tf, n: norm(tf.contents), x: (g[0] + g[2]) / 2 - L, y: T - (g[1] + g[3]) / 2, used: false });
@@ -160,10 +177,92 @@ var JOB = __JOB__;
     }
     if (missed) notes.push("Row " + r.row + ": " + missed + " text(s) not found in " + r.file + " - check that file.");
 
-    if (OUTLINE_TEXT) for (i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].createOutline(); } catch (e) {} }
+    finish(doc, r);
+  }
+
+  function finish(doc, r) {
+    if (OUTLINE_TEXT) for (var i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].createOutline(); } catch (e) {} }
     var out = new File(outDir.fsName + "/" + pad(r.row) + " - " + safe(r.name) + ".ai");
     doc.saveAs(out, new IllustratorSaveOptions());
     if (!JOB.keepOpen) doc.close(SaveOptions.DONOTSAVECHANGES);
+  }
+
+  // most of the item lies in one of the boxes (what the studio took out of the design: the logo,
+  // old outlined words): it goes. A group partly in a box is looked into.
+  function mostlyIn(vb, b) {
+    var w = Math.min(vb[2], b[2]) - Math.max(vb[0], b[0]), h = Math.min(vb[1], b[1]) - Math.max(vb[3], b[3]);
+    if (w <= 0 || h <= 0) return 0;
+    return (w * h) / Math.max(0.01, (vb[2] - vb[0]) * (vb[1] - vb[3]));
+  }
+  function removeIn(container, boxes) {
+    var items = container.pageItems, k, j;
+    for (k = items.length - 1; k >= 0; k--) {
+      var it = items[k];
+      if (it.parent !== container && container.typename === "Layer") continue; // only this layer's own items
+      var vb = it.visibleBounds, best = 0;
+      for (j = 0; j < boxes.length; j++) best = Math.max(best, mostlyIn(vb, boxes[j]));
+      if (best >= 0.8) { try { it.locked = false; it.remove(); } catch (e) {} continue; }
+      if (best > 0 && it.typename === "GroupItem" && !it.clipped) removeIn(it, boxes);
+    }
+    if (container.layers) for (k = 0; k < container.layers.length; k++) removeIn(container.layers[k], boxes);
+  }
+
+  function rgb(hex, fallback) {
+    if (!hex) return fallback;
+    hex = String(hex).replace(/^#/, "");
+    var c = new RGBColor();
+    c.red = parseInt(hex.substr(0, 2), 16); c.green = parseInt(hex.substr(2, 2), 16); c.blue = parseInt(hex.substr(4, 2), 16);
+    return c;
+  }
+
+  // one studio text as editable Illustrator text, in its own look. An outline drawn behind the
+  // letters (as the studio does) needs a copy behind with that outline: they're grouped, named
+  // after the words. Change the words in each frame of the group.
+  function frame(doc, b, strokeHex, strokeW) {
+    var tf = doc.textFrames.add();
+    tf.contents = String(b.text).replace(/\r?\n/g, "\r");
+    var ca = tf.textRange.characterAttributes;
+    try { if (b.ps) ca.textFont = app.textFonts.getByName(b.ps); } catch (e) {
+      try { if (b.family) ca.textFont = app.textFonts.getByName(b.family); } catch (e2) {}
+    }
+    ca.size = b.size;
+    ca.horizontalScale = (b.hScale || 1) * 100;
+    ca.tracking = b.tracking || 0;
+    ca.autoLeading = false;
+    ca.leading = b.size * (b.lineHeight || 1) * 1.13;
+    ca.fillColor = rgb(b.fill, new GrayColor());
+    if (strokeHex && strokeW > 0) { ca.strokeColor = rgb(strokeHex); ca.strokeWeight = strokeW; } else ca.strokeColor = new NoColor();
+    tf.textRange.paragraphAttributes.justification = b.align === "center" ? Justification.CENTER : b.align === "right" ? Justification.RIGHT : Justification.LEFT;
+    return tf;
+  }
+  function addStyled(doc, b, L, T) {
+    var parts = [];
+    if (b.outer && b.outerWidth > 0) parts.push(frame(doc, b, b.outer, b.outerWidth));
+    if (b.stroke && b.strokeBehind) { parts.push(frame(doc, b, b.stroke, b.strokeWidth)); parts.push(frame(doc, b, null, 0)); }
+    else parts.push(frame(doc, b, b.stroke, b.strokeWidth));
+    var it = parts[0];
+    if (parts.length > 1) {
+      it = doc.groupItems.add();
+      for (var k = 0; k < parts.length; k++) parts[k].move(it, ElementPlacement.PLACEATEND); // first one at the back
+      it.name = String(b.text).replace(/\s+/g, " ").substr(0, 60);
+    }
+    if (b.flipX) it.resize(-100, 100);
+    if (b.angle) it.rotate(-b.angle);
+    place(it, b, L, T);
+  }
+  function place(it, b, L, T) {
+    var g = it.geometricBounds; // its middle goes where the studio's box has its middle
+    it.translate((L + (b.l + b.r) / 2) - (g[0] + g[2]) / 2, (T - (b.t + b.b) / 2) - (g[1] + g[3]) / 2);
+  }
+  function addImage(doc, im, L, T) {
+    var p = doc.placedItems.add();
+    p.file = new File(String(im.path).replace(/\\/g, "/"));
+    p.width = im.w || im.r - im.l; // its own size; turned afterwards
+    p.height = im.h || im.b - im.t;
+    if (im.flipX) p.resize(-100, 100);
+    if (im.angle) p.rotate(-im.angle);
+    place(p, im, L, T);
+    try { p.embed(); } catch (e) {}
   }
 
   function addText(doc, b, L, T) {

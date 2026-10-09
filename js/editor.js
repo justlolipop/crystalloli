@@ -351,8 +351,28 @@ export async function textsOf(entry) {
     return {
       src: d.src ?? null, text: String(o.text ?? ""), l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height,
       size: (o.fontSize || 12) * (o.scaleY || 1), fill: typeof o.fill === "string" ? o.fill : null, align: o.textAlign || "left", ps: d.ps || null,
+      // the rest of its look, for an editable copy in Illustrator
+      family: String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim(), hScale: (o.scaleX || 1) / (o.scaleY || 1),
+      lineHeight: o.lineHeight || 1, tracking: o.charSpacing || 0, angle: o.angle || 0, flipX: !!o.flipX,
+      stroke: typeof o.stroke === "string" && o.strokeWidth > 0 ? o.stroke : null, strokeWidth: (o.strokeWidth || 0) * (o.scaleY || 1), strokeBehind: o.paintFirst === "stroke",
+      outer: o.outerStroke && o.outerStrokeWidth > 0 ? o.outerStroke : null, outerWidth: (o.outerStrokeWidth || 0) * (o.scaleY || 1),
     };
   });
+  sc.dispose();
+  return out;
+}
+
+// the pictures added in the studio (+ Image) on a row's design: where they are (pt, from the
+// design's top-left) and the picture itself (data URL), for Illustrator to place
+export async function imagesOf(entry) {
+  const { sc } = await offscreen(entry);
+  const out = sc.getObjects().filter((o) => o.type === "image" && o.data && o.data.role === "image" && o.visible !== false).map((o) => {
+    const b = o.getBoundingRect(true, true);
+    let src = "";
+    try { src = o.getSrc(); } catch (e) {}
+    return { src: /^data:image\//.test(src) ? src : "", l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height,
+      w: o.getScaledWidth(), h: o.getScaledHeight(), angle: o.angle || 0, flipX: !!o.flipX };
+  }).filter((x) => x.src);
   sc.dispose();
   return out;
 }

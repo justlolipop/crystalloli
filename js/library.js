@@ -810,6 +810,23 @@ export async function autoCleanAll(library, save) {
   return n;
 }
 
+// What was taken out of a design's background (its logo, old outlined words, what was removed by
+// hand), as boxes in pt from the design's top-left: Illustrator takes the same out of the original
+// .ai (see illustrator.js). A piece whose drawing steps are all left out is one box.
+export async function removedBoxes(item) {
+  if (!item || !item.original || !(item.hide || []).length) return [];
+  const { page } = await designPage(item);
+  const plan = pagePlan(page);
+  if (!plan) return [];
+  const [rx, ry, rw, rh] = item.region || [0, 0, item.width, item.height];
+  const hidden = new Set(item.hide), covered = new Set(), out = [];
+  for (const e of findElements(plan.items, { x: rx, y: ry, w: rw, h: rh })) {
+    if (e.ops.length && e.ops.every((o) => hidden.has(o))) { out.push(e); for (const o of e.ops) covered.add(o); }
+  }
+  for (const it of plan.items) if (hidden.has(it.op) && !covered.has(it.op)) out.push(it);
+  return out.map((e) => ({ l: e.x0 - rx, t: e.y0 - ry, r: e.x1 - rx, b: e.y1 - ry }));
+}
+
 // a design's background drawn again, at screen size, leaving out the steps in hide -> png data URL
 export async function redrawBackground(item, hide) {
   const { doc, page } = await designPage(item);
