@@ -118,7 +118,7 @@ async function showAll(groups) {
     <div class="abar">
       <span class="muted">${ready} crystal${ready === 1 ? "" : "s"} · click one to see it alone</span>
       <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
-      <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Draw every crystal full size (300 DPI) and download them all in one .zip">⬇ Generate all crystals</button>
+      <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal as a picture (PNG, 300 DPI, see-through background), one file each">⬇ All crystals (PNG)</button>
       <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words still editable, artwork at print quality). Needs Crystal Studio running on this PC (Start Studio.bat); without it they download as a .zip instead.">Open in Illustrator (.ai)</button>
       <span id="aGenMsg" class="muted"></span>
     </div>
@@ -232,12 +232,12 @@ async function generateAll(ai) {
         `<a href="#" id="aHow">Make them open in Illustrator by themselves</a> · <a href="#" id="aRetry">Try Crystal Studio on this PC again</a>`);
       return;
     }
-    if (!window.JSZip) return say("Couldn't generate (zip tool not loaded).");
-    say("Packing…");
-    const zip = new JSZip();
-    for (const f of files) zip.file(f.name + ".png", f.data.split(",")[1], { base64: true });
-    saveFile(await zip.generateAsync({ type: "blob" }), "crystals.zip");
-    say(`Done: ${files.length} crystal${files.length === 1 ? "" : "s"} downloaded${badNote}.`);
+    say(`Downloading ${files.length} picture${files.length === 1 ? "" : "s"}…`);
+    for (const f of files) {
+      saveFile(await (await fetch(f.data)).blob(), f.name + ".png");
+      await new Promise((r) => setTimeout(r, 350));
+    }
+    say(`Done: ${files.length} picture${files.length === 1 ? "" : "s"} (PNG) downloaded${badNote}.`);
   } finally {
     generating = false;
     if (btn.isConnected) btn.disabled = false;
