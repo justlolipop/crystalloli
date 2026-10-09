@@ -739,10 +739,11 @@ async function illustratorJob(all) {
 // editable, artwork at print quality) go to Crystal Studio's program on this PC, which opens them
 // in Illustrator. Works from the online studio too, as long as Start Studio.bat runs on this PC.
 async function openInIllustrator(all) {
-  // opened now, while it's a click; not on a PC where Crystal Studio wasn't running last time
-  let wasOff = false;
-  try { wasOff = localStorage.getItem("crystal-local") === "no"; } catch (e) {}
-  const bridge = wasOff ? { send: async () => null, cancel() {} } : illustratorWindow();
+  // now, while it's a click: start Crystal Studio on this PC (unless it's known to run), and the window to it
+  let up = false;
+  try { up = sessionStorage.getItem("crystal-up") === "1"; } catch (e) {}
+  if (!up) { try { location.href = START_LINK; } catch (e) {} }
+  const bridge = illustratorWindow();
   const files = [], used = new Set();
   const rows = all ? [...new Set(S.rows.map((_, i) => canon(i)))] : [S.row];
   for (const [n, r] of rows.entries()) {
@@ -768,29 +769,12 @@ async function openInIllustrator(all) {
     const f = files[i], p = await printImages(f.key, f.r);
     if (p) svgs.push({ name: f.name, svg: await editor.svgOffscreen(f.entry.state ? { state: f.entry.state, images: p.images } : { scene: { ...p.sc, images: p.images } }) });
   }
-  toast("Opening in Illustrator…");
-  let r = await bridge.send({ job, files: svgs });
-  if (!r) {
-    bridge.cancel();
-    // not running: start it (a PC set up once with Install Crystal Studio link.bat), or download them
-    if (await ask("Crystal Studio isn't running on this PC. Start it now? (Chrome may ask “Open …?” first: choose Open and tick Always allow.) Then click Open in Illustrator again.\n\nCancel downloads the files instead.", "Start Crystal Studio")) {
-      location.href = START_LINK; // Windows starts it (a PC set up once with Install Crystal Studio link.bat)
-      try { localStorage.setItem("crystal-local", "yes"); } catch (e) {}
-      return toast("Starting Crystal Studio… In a few seconds, click Download › Open in Illustrator again. (Nothing starts? Download › Set up this computer for Illustrator.)");
-    }
-  }
-  try { localStorage.setItem("crystal-local", r ? "yes" : "no"); } catch (e) {}
-  if (r) return toast(r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
-  // each its own file, to open in Illustrator by hand (or by themselves: Illustrator as the app for
-  // .svg, and Chrome's "Always open files of this type")
-  for (const f of files) {
-    const p = await printImages(f.key, f.r);
-    if (!p) continue;
-    const svg = await editor.svgOffscreen(f.entry.state ? { state: f.entry.state, images: p.images } : { scene: { ...p.sc, images: p.images } });
-    downloadBlob(new Blob([svg], { type: "image/svg+xml" }), f.name + ".svg");
-    await new Promise((res) => setTimeout(res, 350));
-  }
-  toast("Downloaded: open in Illustrator (words editable), then Save As .ai.");
+  toast(up ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
+  const r = await bridge.sendWhenUp({ job, files: svgs });
+  try { r && !r.old ? sessionStorage.setItem("crystal-up", "1") : sessionStorage.removeItem("crystal-up"); } catch (e) {}
+  if (r) return toast(r.old ? r.error : r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
+  bridge.cancel();
+  toast("Crystal Studio didn't start on this computer. Download › Set up this computer for Illustrator (once), then try again.", "bad");
 }
 
 async function doExport(kind) {

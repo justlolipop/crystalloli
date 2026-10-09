@@ -120,7 +120,7 @@ async function showAll(groups) {
       <span class="muted">${ready} crystal${ready === 1 ? "" : "s"} · click one to see it alone</span>
       <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
       <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal in one PDF, a page each at its real size (300 DPI), to check, send or print">⬇ All crystals (PDF)</button>
-      <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words editable, artwork at print quality)">${startMode ? "▶ Start Crystal Studio" : "Open in Illustrator (.ai)"}</button>
+      <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words editable, artwork at print quality)">Open in Illustrator (.ai)</button>
       <a class="gen-small" href="Crystal%20Studio%20Setup.bat" download="Crystal Studio Setup.bat" title="Once on a computer that should open crystals in Illustrator: download, then double-click it (Windows may warn: More info › Run anyway)">⚙ Set up this computer</a>
       <span id="aGenMsg" class="muted"></span>
     </div>
@@ -140,7 +140,7 @@ async function showAll(groups) {
   document.getElementById("aOut").onclick = () => setAllZoom(-1);
   document.getElementById("aGen").onclick = () => generateAll(false);
   // one button: Open in Illustrator; when Crystal Studio isn't running here it becomes ▶ Start
-  document.getElementById("aAi").onclick = () => (startMode ? startStudio() : generateAll(true));
+  document.getElementById("aAi").onclick = () => generateAll(true);
   out.onclick = (e) => {
     const b = e.target.closest(".cell");
     if (!b) return;
@@ -177,31 +177,16 @@ function saveFile(blob, name) {
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
 
-// Open in Illustrator, when Crystal Studio isn't running on this PC: the same button becomes
-// ▶ Start Crystal Studio. Its click opens crystalstudio://open (set up once on the PC; Chrome asks
-// first, "Always allow" stops that), which starts it; then the button is Open in Illustrator again.
-let startMode = false;
+// Open in Illustrator: one click does it all. Crystal Studio not known to be running here (this
+// tab): the click first asks Windows to start it (crystalstudio://open, set up once by ⚙ Set up this
+// computer; Chrome asks the first time, "Always allow" stops that), then the window to it waits
+// until it's up and hands it the crystals.
 const opened = (r, n) => r.ok ? `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`;
-function startStudio() {
-  startMode = false;
-  try { location.href = START_LINK; } catch (e) {}
-  const btn = document.getElementById("aAi"), msg = document.getElementById("aGenMsg");
-  let left = 12;
-  btn.disabled = true;
-  const t = setInterval(() => {
-    if (!btn.isConnected) return clearInterval(t);
-    if (left > 0) { btn.textContent = `Starting… ${left--}`; return; }
-    clearInterval(t);
-    btn.disabled = false;
-    btn.textContent = "Open in Illustrator (.ai)";
-    if (msg) msg.textContent = "Ready: click Open in Illustrator (.ai).";
-  }, 1000);
-  btn.textContent = `Starting… ${left--}`;
-  if (msg) msg.textContent = "If Chrome asks “Open …?”, choose Open and tick Always allow.";
-}
+const isUp = () => { try { return sessionStorage.getItem("crystal-up") === "1"; } catch (e) { return false; } };
+const setUp = (v) => { try { v ? sessionStorage.setItem("crystal-up", "1") : sessionStorage.removeItem("crystal-up"); } catch (e) {} };
 
 // ai: open in Illustrator, through Crystal Studio on this PC (see to-illustrator.js), each saved as
-// .ai. Not running: the button becomes ▶ Start Crystal Studio. Else: all crystals in one PDF.
+// .ai. Else: all crystals in one PDF.
 async function generateAll(ai) {
   if (generating) return;
   const btn = document.getElementById(ai ? "aAi" : "aGen"), msg = document.getElementById("aGenMsg");
@@ -210,7 +195,9 @@ async function generateAll(ai) {
   generating = true;
   btn.disabled = true;
   const say = (t) => { if (msg) msg.textContent = t; };
-  const bridge = ai ? illustratorWindow() : null; // opened now, while it's a click
+  // now, while it's a click: start Crystal Studio (unless it's known to run), and the window to it
+  if (ai && !isUp()) { try { location.href = START_LINK; } catch (e) {} }
+  const bridge = ai ? illustratorWindow() : null;
   try {
     const files = [], used = new Set();
     let n = 0, bad = 0;
@@ -237,14 +224,13 @@ async function generateAll(ai) {
       const { job, without } = await vectorJob(list);
       const svgs = [];
       for (const i of without) svgs.push({ name: files[i].name, svg: await picture(files[i].c.it, files[i].c.g.jenis, files[i].c.t.row, 300, true) });
-      say("Opening in Illustrator…");
-      const r = await bridge.send({ job, files: svgs });
-      if (r && r.old) { startMode = true; btn.textContent = "▶ Start Crystal Studio"; return say(r.error); }
+      say(isUp() ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
+      const r = await bridge.sendWhenUp({ job, files: svgs });
+      setUp(!!r && !r.old);
+      if (r && r.old) return say(r.error);
       if (r) return say(opened(r, files.length) + badNote);
       bridge.cancel();
-      startMode = true; // not running here: the button starts it
-      btn.textContent = "▶ Start Crystal Studio";
-      return say("Crystal Studio isn't running on this computer: click ▶ Start Crystal Studio.");
+      return say("Crystal Studio didn't start on this computer. Click ⚙ Set up this computer once (download, double-click it), then Open in Illustrator again.");
     }
     // all in one PDF: a page per crystal, at its real size (pt), the picture at 300 DPI
     if (!window.jspdf) return say("Couldn't make the PDF (PDF tool not loaded).");

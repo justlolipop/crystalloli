@@ -40,8 +40,21 @@ export function illustratorWindow() {
     return r;
   }
   return {
+    // like send, but Crystal Studio may still be starting (the click asked Windows to start it):
+    // the window tries again every few seconds until it's up
+    async sendWhenUp(what, ms = 45000) {
+      let ready = await first;
+      const until = Date.now() + ms;
+      while (!ready && win && !win.closed && Date.now() < until) {
+        try { win.location.href = BASE + "/illustrator.html?try=" + Date.now(); } catch (e) { break; }
+        ready = await waitFor("crystal-illustrator-ready", 3000);
+      }
+      return ready ? this.deliverTo(ready, what) : null;
+    },
     async send(what) {
-      const ready = await first;
+      return this.deliverTo(await first, what);
+    },
+    async deliverTo(ready, what) {
       if (!ready) return null;
       // an older Crystal Studio on this PC (before it made crystals from their original .ai)
       if (!Array.isArray(what) && what.job && what.job.rows && what.job.rows.length && !(ready.v >= 2)) {
