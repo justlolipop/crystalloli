@@ -61,7 +61,9 @@ export function illustratorWindow() {
         try { win.close(); } catch (e) {}
         return { ok: false, old: true, error: "Crystal Studio on this computer is an old version: close its black window, then click Open in Illustrator again (it updates itself when it starts)." };
       }
-      return deliver(what);
+      const r = await deliver(what);
+      if (r) r.build = ready.build || "old"; // which Crystal Studio answered
+      return r;
     },
     cancel() { try { win && win.close(); } catch (e) {} },
   };

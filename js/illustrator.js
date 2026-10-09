@@ -207,7 +207,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     for (i = 0; i < r.texts.length; i++) {
       try { addStyled(layer, r.texts[i].now, L, T); added++; } catch (e) { notes.push("Row " + r.row + ": a text couldn't be added (" + e.message + ")"); }
     }
-    if (added < r.texts.length) notes.push("Row " + r.row + ": " + added + " of " + r.texts.length + " texts added.");
+    notes.push("Row " + r.row + ": " + added + " of " + r.texts.length + " texts added.");
     finish(doc, r);
   }
 
@@ -332,7 +332,10 @@ var OUTLINE_TEXT = JOB.outline !== false;
   for (var f in opened) { try { opened[f].close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} }
   app.userInteractionLevel = level;
   app.coordinateSystem = coords;
-  alert("Crystal Studio: " + done + " .ai file(s) saved in\n" + outDir.fsName + (notes.length ? "\n\n" + notes.join("\n") : ""));
+  var report = done + " .ai file(s) saved in " + outDir.fsName + (notes.length ? ". " + notes.join(" ") : "");
+  // for the website: Crystal Studio's window reads this and shows it next to the button
+  try { var log = new File(outDir.fsName + "/_result.txt"); log.encoding = "UTF-8"; log.open("w"); log.write(report); log.close(); } catch (e) {}
+  if (!JOB.quiet) alert("Crystal Studio: " + done + " .ai file(s) saved in\n" + outDir.fsName + (notes.length ? "\n\n" + notes.join("\n") : ""));
 })();
 `;
 

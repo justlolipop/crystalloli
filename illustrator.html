@@ -22,8 +22,8 @@
 (async () => {
   const msg = document.getElementById("msg"), sub = document.getElementById("sub");
   const tell = (m) => { try { window.opener && window.opener.postMessage(m, "*"); } catch (e) {} };
-  let origins = [], v = 1;
-  try { const info = await (await fetch("/api/illustrator/svgs")).json(); origins = info.origins || []; v = info.v || 1; } catch (e) {}
+  let origins = [], v = 1, build = "";
+  try { const info = await (await fetch("/api/illustrator/svgs")).json(); origins = info.origins || []; v = info.v || 1; build = info.build || ""; } catch (e) {}
   const allowed = (o) => o === location.origin || /^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o) || origins.includes(o);
   let busy = false;
   window.addEventListener("message", async (e) => {
@@ -43,15 +43,23 @@
     const r = (!a ? b : !b ? a : { ok: a.ok && b.ok, folder: a.folder, error: a.error || b.error }) || { ok: false, error: "nothing to open" };
     tell({ type: "crystal-illustrator-done", result: r });
     if (r.ok) {
-      msg.textContent = "Illustrator is opening them.";
-      sub.textContent = "Each is saved as .ai in " + r.folder + ". This window closes by itself.";
-      setTimeout(() => window.close(), 4000);
+      msg.textContent = "Illustrator is making them…";
+      sub.textContent = "Saved as .ai in " + r.folder + ". This window closes by itself when Illustrator is done.";
+      // wait for Illustrator's report (up to 5 minutes), pass it to the page, then close
+      const until = Date.now() + 300000;
+      while (Date.now() < until) {
+        await new Promise((ok) => setTimeout(ok, 2000));
+        let res = null;
+        try { res = await (await fetch("/api/illustrator/result?folder=" + encodeURIComponent(r.folder))).json(); } catch (e) {}
+        if (res && res.done) { tell({ type: "crystal-illustrator-report", text: res.text }); break; }
+      }
+      window.close();
     } else {
       msg.className = "bad";
       msg.textContent = "Couldn't open Illustrator: " + (r.error || "no answer");
     }
   });
-  tell({ type: "crystal-illustrator-ready", v });
+  tell({ type: "crystal-illustrator-ready", v, build });
 })();
 </script>
 </body>
