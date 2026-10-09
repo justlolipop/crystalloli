@@ -110,6 +110,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
   }
 
   function makeRow(r) {
+    if (r.master) return makeMaster(r);
     var src = source(r);
     if (!src) throw new Error("couldn't find " + r.file);
     var ab = src.artboards[(r.page || 1) - 1].artboardRect; // [left, top, right, bottom]
@@ -134,22 +135,6 @@ var OUTLINE_TEXT = JOB.outline !== false;
     doc.artboards[0].artboardRect = [L, T, R, B];
 
     var i;
-    // master template (r.master): the design keeps only its artwork — its logo and old words come
-    // out — and gets the studio's texts (and pictures added there), editable, in their own look
-    if (r.master) {
-      for (i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].remove(); } catch (e) {} }
-      var boxes = [];
-      for (i = 0; i < (r.remove || []).length; i++) {
-        var bx = r.remove[i];
-        boxes.push([L + bx.l - 1, T - bx.t + 1, L + bx.r + 1, T - bx.b - 1]);
-      }
-      if (boxes.length) for (i = 0; i < doc.layers.length; i++) removeIn(doc.layers[i], boxes);
-      for (i = 0; i < (r.images || []).length; i++) { try { addImage(doc, r.images[i], L, T); } catch (e) { notes.push("Row " + r.row + ": a picture couldn't be placed (" + e.message + ")"); } }
-      for (i = 0; i < r.texts.length; i++) addStyled(doc, r.texts[i].now, L, T);
-      finish(doc, r);
-      return;
-    }
-
     var frames = [];
     for (i = 0; i < doc.textFrames.length; i++) {
       var tf = doc.textFrames[i], g = tf.geometricBounds;
@@ -180,6 +165,54 @@ var OUTLINE_TEXT = JOB.outline !== false;
     finish(doc, r);
   }
 
+  // master template (r.master): the original .ai is opened afresh and cut down to this design —
+  // its artboard, and only what's on it (a group spread over several designs is looked into) —
+  // then its logo and old words come out, the studio's texts (and pictures added there) go in,
+  // editable, and it's saved as a new .ai. The original file isn't changed.
+  function makeMaster(r) {
+    var f = r.path ? new File(String(r.path).replace(/\\/g, "/")) : null;
+    if (!f || !f.exists) throw new Error("the original .ai of " + r.file + " wasn't found");
+    var doc = app.open(f), i;
+    var keep = Math.min((r.page || 1) - 1, doc.artboards.length - 1);
+    var ab = doc.artboards[keep].artboardRect; // [left, top, right, bottom], y up
+    var L = ab[0] + r.region[0], T = ab[1] - r.region[1], R = L + r.region[2], B = T - r.region[3];
+    for (i = doc.artboards.length - 1; i >= 0; i--) if (i !== keep) { try { doc.artboards.remove(i); } catch (e) {} }
+    doc.artboards[0].artboardRect = [L, T, R, B];
+    var box = [L, T, R, B];
+    for (i = 0; i < doc.layers.length; i++) cropIn(doc.layers[i], box);
+    // the design's old words (live text): the studio's texts replace them
+    for (i = doc.textFrames.length - 1; i >= 0; i--) {
+      try { if (!outside(doc.textFrames[i].visibleBounds, box)) doc.textFrames[i].remove(); } catch (e) {}
+    }
+    var boxes = [];
+    for (i = 0; i < (r.remove || []).length; i++) {
+      var bx = r.remove[i];
+      boxes.push([L + bx.l - 1, T - bx.t + 1, L + bx.r + 1, T - bx.b - 1]);
+    }
+    if (boxes.length) for (i = 0; i < doc.layers.length; i++) removeIn(doc.layers[i], boxes);
+    for (i = 0; i < (r.images || []).length; i++) { try { addImage(doc, r.images[i], L, T); } catch (e) { notes.push("Row " + r.row + ": a picture couldn't be placed (" + e.message + ")"); } }
+    for (i = 0; i < r.texts.length; i++) {
+      try { addStyled(doc, r.texts[i].now, L, T); } catch (e) { notes.push("Row " + r.row + ": a text couldn't be added (" + e.message + ")"); }
+    }
+    finish(doc, r);
+  }
+
+  function outside(vb, b) { return vb[2] < b[0] || vb[0] > b[2] || vb[1] < b[3] || vb[3] > b[1]; }
+  function partly(vb, b) { return vb[0] < b[0] || vb[2] > b[2] || vb[1] > b[1] || vb[3] < b[3]; }
+  // everything off the design's box goes; a group partly on it is looked into
+  function cropIn(container, b) {
+    try { container.locked = false; } catch (e) {}
+    var items = container.pageItems, k;
+    for (k = items.length - 1; k >= 0; k--) {
+      var it = items[k];
+      if (it.parent !== container) continue; // only its own items; groups are looked into below
+      var vb = it.visibleBounds;
+      if (outside(vb, b)) { try { it.locked = false; it.remove(); } catch (e) {} continue; }
+      if (it.typename === "GroupItem" && !it.clipped && partly(vb, b)) cropIn(it, b);
+    }
+    if (container.layers) for (k = 0; k < container.layers.length; k++) cropIn(container.layers[k], b);
+  }
+
   function finish(doc, r) {
     if (OUTLINE_TEXT) for (var i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].createOutline(); } catch (e) {} }
     var out = new File(outDir.fsName + "/" + pad(r.row) + " - " + safe(r.name) + ".ai");
@@ -198,7 +231,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var items = container.pageItems, k, j;
     for (k = items.length - 1; k >= 0; k--) {
       var it = items[k];
-      if (it.parent !== container && container.typename === "Layer") continue; // only this layer's own items
+      if (it.parent !== container) continue; // only its own items; groups are looked into below
       var vb = it.visibleBounds, best = 0;
       for (j = 0; j < boxes.length; j++) best = Math.max(best, mostlyIn(vb, boxes[j]));
       if (best >= 0.8) { try { it.locked = false; it.remove(); } catch (e) {} continue; }
