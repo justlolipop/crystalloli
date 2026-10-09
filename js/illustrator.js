@@ -307,9 +307,25 @@ var OUTLINE_TEXT = JOB.outline !== false;
     set("line spacing", function () { ca.autoLeading = false; ca.leading = b.size * (b.lineHeight || 1) * 1.13; });
     set("colour", function () { ca.fillColor = rgb(b.fill || "#000000"); });
     set("outline", function () { if (strokeHex && strokeW > 0) { ca.strokeColor = rgb(strokeHex); ca.strokeWeight = strokeW; } else ca.strokeColor = new NoColor(); });
-    set("alignment", function () { tf.textRange.paragraphAttributes.justification = b.align === "center" ? Justification.CENTER : b.align === "right" ? Justification.RIGHT : Justification.LEFT; });
+    // every line (paragraph) on its own: the original .ai's own paragraph style can keep the
+    // whole-text setting from reaching the lines after it
+    set("alignment", function () {
+      var j = justOf(b.align);
+      tf.textRange.paragraphAttributes.justification = j;
+      for (var p = 0; p < tf.paragraphs.length; p++) tf.paragraphs[p].paragraphAttributes.justification = j;
+    });
     return tf;
   }
+  function justOf(align) { return align === "center" ? Justification.CENTER : align === "right" ? Justification.RIGHT : Justification.LEFT; }
+  // did every line take the alignment?
+  function alignedOk(tf, align) {
+    try {
+      var j = justOf(align);
+      for (var p = 0; p < tf.paragraphs.length; p++) if (tf.paragraphs[p].paragraphAttributes.justification != j) return false;
+      return true;
+    } catch (e) { return true; }
+  }
+  var splitNoted = false;
   function addStyled(layer, b, L, T) {
     var parts = [];
     if (b.outer && b.outerWidth > 0) parts.push(frame(layer, b, b.outer, b.outerWidth));
@@ -322,6 +338,20 @@ var OUTLINE_TEXT = JOB.outline !== false;
       // (PLACEATBEGINNING is the front of a group; PLACEATEND, its back)
       for (var k = 0; k < parts.length; k++) parts[k].move(it, ElementPlacement.PLACEATBEGINNING);
       it.name = String(b.text).replace(/\s+/g, " ").substr(0, 60);
+    }
+    // Illustrator kept its own alignment for the lines: each line as its own text instead, at the
+    // place the studio has it (so they still line up as in the studio)
+    if (b.lines && b.lines.length > 1 && !alignedOk(parts[parts.length - 1], b.align)) {
+      it.remove();
+      if (!splitNoted) { splitNoted = true; notes.push("This .ai kept its own text alignment, so each line is its own text"); }
+      for (var q = 0; q < b.lines.length; q++) {
+        var one = {}, key;
+        for (key in b) one[key] = b[key];
+        one.lines = null;
+        one.text = b.lines[q].text; one.l = b.lines[q].l; one.t = b.lines[q].t; one.r = b.lines[q].r; one.b = b.lines[q].b;
+        if (String(one.text).replace(/\s+/g, "")) addStyled(layer, one, L, T);
+      }
+      return;
     }
     if (b.flipX) it.resize(-100, 100);
     if (b.angle) it.rotate(-b.angle);

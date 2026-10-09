@@ -342,6 +342,24 @@ async function offscreen(entry) {
   return { sc, w, h };
 }
 
+// each line of a text (not turned) as its own box in pt, where the studio draws it — for
+// Illustrator when it won't line the lines up itself
+function linesOf(o) {
+  const n = (o._textLines || []).length;
+  if (n < 2 || o.angle) return null;
+  const tl = o.getPointByOrigin("left", "top"), sx = Math.abs(o.scaleX || 1), sy = o.scaleY || 1;
+  const out = [];
+  let y = tl.y;
+  for (let i = 0; i < n; i++) {
+    const w = o.getLineWidth(i), h = o.getHeightOfLine(i) / (i === n - 1 ? o.lineHeight || 1 : 1);
+    let x = o._getLineLeftOffset(i);
+    if (o.flipX) x = o.width - x - w;
+    out.push({ text: o._textLines[i].join(""), l: tl.x + x * sx, r: tl.x + (x + w) * sx, t: y, b: y + h * sy });
+    y += o.getHeightOfLine(i) * sy;
+  }
+  return out;
+}
+
 // every text of a row's design as plain data (box in pt from the design's top-left), for
 // putting the same words into the original .ai in Illustrator
 export async function textsOf(entry) {
@@ -356,6 +374,7 @@ export async function textsOf(entry) {
       lineHeight: o.lineHeight || 1, tracking: o.charSpacing || 0, angle: o.angle || 0, flipX: !!o.flipX,
       stroke: typeof o.stroke === "string" && o.strokeWidth > 0 ? o.stroke : null, strokeWidth: (o.strokeWidth || 0) * (o.scaleY || 1), strokeBehind: o.paintFirst === "stroke",
       outer: o.outerStroke && o.outerStrokeWidth > 0 ? o.outerStroke : null, outerWidth: (o.outerStrokeWidth || 0) * (o.scaleY || 1),
+      lines: linesOf(o),
     };
   });
   sc.dispose();
