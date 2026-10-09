@@ -12,4 +12,4 @@ echo.
 echo Done. On this PC the website's "Start Crystal Studio" button now starts Crystal Studio.
 where node >nul 2>nul || echo Still needed: Node.js from https://nodejs.org (the LTS one).
 echo.
-pause
+if /i not "%~1"=="nopause" pause

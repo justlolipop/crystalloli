@@ -191,6 +191,10 @@ const HOW = "To make them open in Illustrator by themselves (once on each comput
   "3. If Chrome asks to download multiple files, choose Allow.\n\n" +
   "From then on, the button opens every crystal in Illustrator. There: File › Save As › Adobe Illustrator (.ai).";
 
+// one file that sets a computer up for this (Node.js, Crystal Studio, the Start link); it's next to
+// this page, on the online studio and in the Crystal Studio folder
+const SETUP_LINK = `<a href="Crystal%20Studio%20Setup.bat" download="Crystal Studio Setup.bat" title="Download, then double-click it once on this computer (Windows may warn: More info › Run anyway)">First time on this computer? Get the setup file</a>`;
+
 // the Illustrator files of the last click, while Crystal Studio wasn't running on this PC
 let pending = null;
 const msgEl = () => document.getElementById("aGenMsg");
@@ -210,7 +214,7 @@ async function startStudio() {
     return tellMsg(opened(r, files.length));
   }
   bridge.cancel();
-  tellMsg(`Crystal Studio didn't start. On this PC, run <b>Install Crystal Studio link.bat</b> once (in the Crystal Studio folder), or <a href="#" id="aDownload">download the files instead</a>.`, true);
+  tellMsg(`Crystal Studio didn't start: this computer isn't set up yet. ${SETUP_LINK} (download, double-click once, then click Open in Illustrator again), or <a href="#" id="aDownload">download the files instead</a>.`, true);
 }
 async function downloadSvgs() {
   if (!pending) return;
@@ -263,7 +267,7 @@ async function generateAll(ai) {
       }
       // Crystal Studio isn't running on this PC: start it (a PC set up once), or just download them
       pending = svgs;
-      sayHtml(`Crystal Studio isn't running on this PC.${badNote} <a href="${START_LINK}" id="aStart" class="gen-link">▶ Start Crystal Studio</a> · <a href="#" id="aDownload">Download the files instead</a>`);
+      sayHtml(`Crystal Studio isn't running on this PC.${badNote} <a href="${START_LINK}" id="aStart" class="gen-link">▶ Start Crystal Studio</a> · <a href="#" id="aDownload">Download the files instead</a> · ${SETUP_LINK}`);
       return;
     }
     say(`Downloading ${files.length} picture${files.length === 1 ? "" : "s"}…`);
