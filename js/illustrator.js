@@ -111,6 +111,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
 
   function makeRow(r) {
     if (r.master) return makeMaster(r);
+    app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
     var src = source(r);
     if (!src) throw new Error("couldn't find " + r.file);
     var ab = src.artboards[(r.page || 1) - 1].artboardRect; // [left, top, right, bottom]
@@ -173,11 +174,18 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var f = r.path ? new File(String(r.path).replace(/\\/g, "/")) : null;
     if (!f || !f.exists) throw new Error("the original .ai of " + r.file + " wasn't found");
     var doc = app.open(f), i;
+    app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
     var keep = Math.min((r.page || 1) - 1, doc.artboards.length - 1);
     var ab = doc.artboards[keep].artboardRect; // [left, top, right, bottom], y up
-    var L = ab[0] + r.region[0], T = ab[1] - r.region[1], R = L + r.region[2], B = T - r.region[3];
+    // the design's artboard first, then the others go: removing artboards can move the document's
+    // origin, so nothing is measured in document terms after that
+    doc.artboards[keep].artboardRect = [ab[0] + r.region[0], ab[1] - r.region[1], ab[0] + r.region[0] + r.region[2], ab[1] - r.region[1] - r.region[3]];
     for (i = doc.artboards.length - 1; i >= 0; i--) if (i !== keep) { try { doc.artboards.remove(i); } catch (e) {} }
-    doc.artboards[0].artboardRect = [L, T, R, B];
+    // from here on, everything is measured from the design's own artboard: its top-left is 0, 0
+    // (y up, so below it is negative)
+    doc.artboards.setActiveArtboardIndex(0);
+    app.coordinateSystem = CoordinateSystem.ARTBOARDCOORDINATESYSTEM;
+    var L = 0, T = 0, R = r.region[2], B = -r.region[3];
     var box = [L, T, R, B];
     // each cleaning step on its own: one odd piece of artwork mustn't stop the words going in
     function step(what, fn) { try { fn(); } catch (e) { notes.push("Row " + r.row + ": " + what + " (" + e.message + ")"); } }
