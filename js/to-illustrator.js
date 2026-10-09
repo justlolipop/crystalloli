@@ -44,3 +44,7 @@ export function illustratorWindow() {
     cancel() { try { win && win.close(); } catch (e) {} },
   };
 }
+
+// Kept for pages still holding an older copy of preview.js / app.js (the browser updates these
+// files one by one): without it, such a page stops with "doesn't provide an export".
+export function startStudioLink() {}
