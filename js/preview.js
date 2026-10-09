@@ -12,7 +12,7 @@ import { store, onLibraryChanged } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll, hiResBackground } from "./library.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
-import { illustratorWindow, START_LINK, startStudioLink } from "./to-illustrator.js";
+import { illustratorWindow, START_LINK } from "./to-illustrator.js";
 
 const DPI = 150;      // sharp enough to zoom in on the words
 const BASE_H = 380;   // the picture's height on the page before zooming (px)
@@ -140,13 +140,9 @@ async function showAll(groups) {
   document.getElementById("aAi").onclick = () => generateAll(true);
   document.getElementById("aGenMsg").onclick = (e) => {
     if (e.target.id === "aHow") { e.preventDefault(); alert(HOW); }
-    if (e.target.id === "aStart") {
-      // first ask Windows to start Crystal Studio (crystalstudio://open; Chrome asks before), then
-      // open the window to it — in this order, while it's still the click
-      e.preventDefault();
-      startStudioLink();
-      startStudio();
-    }
+    // the link itself (crystalstudio://open) asks Windows to start Crystal Studio, Chrome asking
+    // first; then a click on Open in Illustrator sends the files to it
+    if (e.target.id === "aStart") startStudio();
     if (e.target.id === "aDownload") { e.preventDefault(); downloadSvgs(); }
   };
   out.onclick = (e) => {
@@ -201,20 +197,17 @@ const msgEl = () => document.getElementById("aGenMsg");
 const tellMsg = (t, html) => { const m = msgEl(); if (m) m[html ? "innerHTML" : "textContent"] = t; };
 const opened = (r, n) => r.ok ? `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`;
 
-// ▶ Start Crystal Studio: the link itself asks Windows to start it (Chrome asks first); meanwhile a
-// window to it tries until it's up, then the files go to Illustrator
-async function startStudio() {
-  if (!pending) return;
-  const files = pending, bridge = illustratorWindow();
-  tellMsg("Starting Crystal Studio on this PC… (if Chrome asks “Open …?”, choose Open, and tick Always allow)");
-  const r = await bridge.startThenSend(files);
-  if (r) {
-    pending = null;
-    remember("crystal-local", "yes");
-    return tellMsg(opened(r, files.length));
-  }
-  bridge.cancel();
-  tellMsg(`Crystal Studio didn't start: this computer isn't set up yet. ${SETUP_LINK} (download, double-click once, then click Open in Illustrator again), or <a href="#" id="aDownload">download the files instead</a>.`, true);
+// ▶ Start Crystal Studio: the click on the link starts it (a real click: Chrome only lets a link
+// open a program then); a few seconds later, Open in Illustrator goes to it
+function startStudio() {
+  remember("crystal-local", "yes"); // next click: look for it again
+  let left = 15;
+  const tick = () => {
+    if (left > 0) tellMsg(`Starting Crystal Studio on this PC… (if Chrome asks “Open …?”, choose Open and tick Always allow) ${left--}`);
+    else { clearInterval(t); tellMsg(`Now click <b>Open in Illustrator (.ai)</b> again. Didn't start? ${SETUP_LINK}, or <a href="#" id="aDownload">download the files instead</a>.`, true); }
+  };
+  const t = setInterval(tick, 1000);
+  tick();
 }
 async function downloadSvgs() {
   if (!pending) return;

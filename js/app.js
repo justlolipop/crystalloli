@@ -10,7 +10,7 @@ import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, M
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
-import { illustratorWindow, START_LINK, startStudioLink } from "./to-illustrator.js";
+import { illustratorWindow, START_LINK } from "./to-illustrator.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
 import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
 
@@ -764,12 +764,10 @@ async function openInIllustrator(all) {
   if (!r) {
     bridge.cancel();
     // not running: start it (a PC set up once with Install Crystal Studio link.bat), or download them
-    if (await ask("Crystal Studio isn't running on this PC. Start it now? (Chrome may ask “Open …?” first: choose Open.)\n\nCancel downloads the files instead.", "Start Crystal Studio")) {
-      startStudioLink();
-      toast("Starting Crystal Studio on this PC…");
-      const again = illustratorWindow();
-      r = await again.startThenSend(files);
-      if (!r) { again.cancel(); toast("Crystal Studio didn't start: this computer isn't set up yet. Download › Set up this computer for Illustrator, double-click that file once, then try again.", "bad"); }
+    if (await ask("Crystal Studio isn't running on this PC. Start it now? (Chrome may ask “Open …?” first: choose Open and tick Always allow.) Then click Open in Illustrator again.\n\nCancel downloads the files instead.", "Start Crystal Studio")) {
+      location.href = START_LINK; // Windows starts it (a PC set up once with Install Crystal Studio link.bat)
+      try { localStorage.setItem("crystal-local", "yes"); } catch (e) {}
+      return toast("Starting Crystal Studio… In a few seconds, click Download › Open in Illustrator again. (Nothing starts? Download › Set up this computer for Illustrator.)");
     }
   }
   try { localStorage.setItem("crystal-local", r ? "yes" : "no"); } catch (e) {}
