@@ -119,7 +119,7 @@ async function showAll(groups) {
       <span class="muted">${ready} crystal${ready === 1 ? "" : "s"} · click one to see it alone</span>
       <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
       <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal in one PDF, a page each at its real size (300 DPI), to check, send or print">⬇ All crystals (PDF)</button>
-      <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words still editable, artwork at print quality). Needs Crystal Studio running on this PC (Start Studio.bat); without it they download as a .zip instead.">Open in Illustrator (.ai)</button>
+      <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words editable, artwork at print quality)">${startMode ? "▶ Start Crystal Studio" : "Open in Illustrator (.ai)"}</button>
       <span id="aGenMsg" class="muted"></span>
     </div>
     <div class="grid" id="aGrid" style="--th:${Math.round(THUMB_H * allZoom)}px">${cells.map((c, n) => `
@@ -137,14 +137,8 @@ async function showAll(groups) {
   document.getElementById("aIn").onclick = () => setAllZoom(1);
   document.getElementById("aOut").onclick = () => setAllZoom(-1);
   document.getElementById("aGen").onclick = () => generateAll(false);
-  document.getElementById("aAi").onclick = () => generateAll(true);
-  document.getElementById("aGenMsg").onclick = (e) => {
-    if (e.target.id === "aHow") { e.preventDefault(); alert(HOW); }
-    // the link itself (crystalstudio://open) asks Windows to start Crystal Studio, Chrome asking
-    // first; then a click on Open in Illustrator sends the files to it
-    if (e.target.id === "aStart") startStudio();
-    if (e.target.id === "aDownload") { e.preventDefault(); downloadSvgs(); }
-  };
+  // one button: Open in Illustrator; when Crystal Studio isn't running here it becomes ▶ Start
+  document.getElementById("aAi").onclick = () => (startMode ? startStudio() : generateAll(true));
   out.onclick = (e) => {
     const b = e.target.closest(".cell");
     if (!b) return;
@@ -171,7 +165,6 @@ async function showAll(groups) {
 
 // every crystal of the order, full size, one file each: "SA4 - DESIGN B - TOKOH AKADEMIK PUTERI x1.png"
 let generating = false;
-const remember = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
 function saveFile(blob, name) {
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
@@ -181,49 +174,32 @@ function saveFile(blob, name) {
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 60000);
 }
-const HOW = "To make them open in Illustrator by themselves (once on each computer, nothing to install):\n\n" +
-  "1. Windows: right-click any .svg file › Open with › Choose another app › Adobe Illustrator › tick “Always”.\n" +
-  "2. Chrome: after a download, click the file's ⋮ in the downloads list (top right) › “Always open files of this type”.\n" +
-  "3. If Chrome asks to download multiple files, choose Allow.\n\n" +
-  "From then on, the button opens every crystal in Illustrator. There: File › Save As › Adobe Illustrator (.ai).";
 
-// one file that sets a computer up for this (Node.js, Crystal Studio, the Start link); it's next to
-// this page, on the online studio and in the Crystal Studio folder
-const SETUP_LINK = `<a href="Crystal%20Studio%20Setup.bat" download="Crystal Studio Setup.bat" title="Download, then double-click it once on this computer (Windows may warn: More info › Run anyway)">First time on this computer? Get the setup file</a>`;
-
-// the Illustrator files of the last click, while Crystal Studio wasn't running on this PC
-let pending = null;
-const msgEl = () => document.getElementById("aGenMsg");
-const tellMsg = (t, html) => { const m = msgEl(); if (m) m[html ? "innerHTML" : "textContent"] = t; };
+// Open in Illustrator, when Crystal Studio isn't running on this PC: the same button becomes
+// ▶ Start Crystal Studio. Its click opens crystalstudio://open (set up once on the PC; Chrome asks
+// first, "Always allow" stops that), which starts it; then the button is Open in Illustrator again.
+let startMode = false;
 const opened = (r, n) => r.ok ? `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`;
-
-// ▶ Start Crystal Studio: the click on the link starts it (a real click: Chrome only lets a link
-// open a program then); a few seconds later, Open in Illustrator goes to it
 function startStudio() {
-  remember("crystal-local", "yes"); // next click: look for it again
-  let left = 15;
-  const tick = () => {
-    if (left > 0) tellMsg(`Starting Crystal Studio on this PC… (if Chrome asks “Open …?”, choose Open and tick Always allow) ${left--}`);
-    else { clearInterval(t); tellMsg(`Now click <b>Open in Illustrator (.ai)</b> again. Didn't start? ${SETUP_LINK}, or <a href="#" id="aDownload">download the files instead</a>.`, true); }
-  };
-  const t = setInterval(tick, 1000);
-  tick();
-}
-async function downloadSvgs() {
-  if (!pending) return;
-  const files = pending;
-  pending = null;
-  tellMsg(`Downloading ${files.length} file${files.length === 1 ? "" : "s"}…`);
-  for (const f of files) {
-    saveFile(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
-    await new Promise((r) => setTimeout(r, 350)); // one after another, or the browser drops some
-  }
-  tellMsg(`Downloaded ${files.length} file${files.length === 1 ? "" : "s"}: open them in Illustrator (words editable), then Save As .ai. <a href="#" id="aHow">Make them open in Illustrator by themselves</a>`, true);
+  startMode = false;
+  try { location.href = START_LINK; } catch (e) {}
+  const btn = document.getElementById("aAi"), msg = document.getElementById("aGenMsg");
+  let left = 12;
+  btn.disabled = true;
+  const t = setInterval(() => {
+    if (!btn.isConnected) return clearInterval(t);
+    if (left > 0) { btn.textContent = `Starting… ${left--}`; return; }
+    clearInterval(t);
+    btn.disabled = false;
+    btn.textContent = "Open in Illustrator (.ai)";
+    if (msg) msg.textContent = "Ready: click Open in Illustrator (.ai).";
+  }, 1000);
+  btn.textContent = `Starting… ${left--}`;
+  if (msg) msg.textContent = "If Chrome asks “Open …?”, choose Open and tick Always allow.";
 }
 
-// ai: as Illustrator files. On a PC running Crystal Studio they open straight in Illustrator and are
-// saved there as .ai (see to-illustrator.js). Not running: ▶ Start Crystal Studio (a PC set up once
-// with Install Crystal Studio link.bat), or download them (one .svg each, to Save As .ai).
+// ai: open in Illustrator, through Crystal Studio on this PC (see to-illustrator.js), each saved as
+// .ai. Not running: the button becomes ▶ Start Crystal Studio. Else: all crystals in one PDF.
 async function generateAll(ai) {
   if (generating) return;
   const btn = document.getElementById(ai ? "aAi" : "aGen"), msg = document.getElementById("aGenMsg");
@@ -232,9 +208,7 @@ async function generateAll(ai) {
   generating = true;
   btn.disabled = true;
   const say = (t) => { if (msg) msg.textContent = t; };
-  const sayHtml = (h) => { if (msg) msg.innerHTML = h; };
-  // opened now, while it's a click; not on a PC where Crystal Studio wasn't running last time
-  const bridge = ai && remember("crystal-local") !== "no" ? illustratorWindow() : null;
+  const bridge = ai ? illustratorWindow() : null; // opened now, while it's a click
   try {
     const files = [], used = new Set();
     let n = 0, bad = 0;
@@ -250,18 +224,13 @@ async function generateAll(ai) {
     }
     const badNote = bad ? ` (${bad} couldn't be drawn)` : "";
     if (ai) {
-      const svgs = files.map((f) => ({ name: f.name, svg: f.data }));
-      if (bridge) {
-        say("Opening in Illustrator…");
-        const r = await bridge.send(svgs);
-        if (r) { remember("crystal-local", "yes"); return say(opened(r, files.length) + badNote); }
-        bridge.cancel();
-        remember("crystal-local", "no"); // next time: no window, straight to the choice below
-      }
-      // Crystal Studio isn't running on this PC: start it (a PC set up once), or just download them
-      pending = svgs;
-      sayHtml(`Crystal Studio isn't running on this PC.${badNote} <a href="${START_LINK}" id="aStart" class="gen-link">▶ Start Crystal Studio</a> · <a href="#" id="aDownload">Download the files instead</a> · ${SETUP_LINK}`);
-      return;
+      say("Opening in Illustrator…");
+      const r = await bridge.send(files.map((f) => ({ name: f.name, svg: f.data })));
+      if (r) return say(opened(r, files.length) + badNote);
+      bridge.cancel();
+      startMode = true; // not running here: the button starts it
+      btn.textContent = "▶ Start Crystal Studio";
+      return say("Crystal Studio isn't running on this computer: click ▶ Start Crystal Studio.");
     }
     // all in one PDF: a page per crystal, at its real size (pt), the picture at 300 DPI
     if (!window.jspdf) return say("Couldn't make the PDF (PDF tool not loaded).");
