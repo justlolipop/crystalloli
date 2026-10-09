@@ -279,6 +279,9 @@ async function runInIllustrator(body) {
 // open its crystals in Illustrator. Only these pages: this PC's own studio, and the online one
 // ("studioOrigins" in studio.config.json to add another, e.g. a custom domain).
 const ONLINE_STUDIO = ["https://justlolipop.github.io"];
+// what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
+// with master rows). Older copies only knew .svg files; the website says so then.
+const BRIDGE_VERSION = 2;
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
@@ -348,7 +351,7 @@ async function handleNativeRequest(req, res) {
       // "is Crystal Studio running on this PC?" — and which pages may send it crystals
       if (m === "GET") {
         const extra = readJson(CONFIG_FILE, {}).studioOrigins;
-        return send(res, 200, { ok: true, origins: [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])] }, corsHeaders(req));
+        return send(res, 200, { ok: true, v: BRIDGE_VERSION, origins: [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])] }, corsHeaders(req));
       }
       if (m === "POST") return send(res, 200, openSvgsInIllustrator(await readBody(req)), corsHeaders(req));
     }
