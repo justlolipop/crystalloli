@@ -4,25 +4,14 @@
 // Illustrator and save each one as .ai. Used by the studio and by the order website's preview.
 //
 // Crystal Studio not running? On a PC where "Install Crystal Studio link.bat" was run once, the
-// link crystalstudio://open starts it (Chrome asks first); the window then tries again until it's up.
+// link crystalstudio://open starts it (Chrome asks first) — clicked as a real link, as Chrome only
+// lets a link start a program from a click on it.
 
 const BASE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? location.origin : "http://localhost:5190";
 export const START_LINK = "crystalstudio://open";
 
-// Ask Windows to start Crystal Studio (crystalstudio://open, set up by Install Crystal Studio
-// link.bat; Chrome asks first). From a hidden frame, so this page itself doesn't navigate.
-// Call from a click, before opening any window.
-export function startStudioLink() {
-  const f = document.createElement("iframe");
-  f.style.display = "none";
-  f.src = START_LINK;
-  document.body.appendChild(f);
-  setTimeout(() => f.remove(), 10000);
-}
-
 // Call straight from a click (a window may only be opened then).
-// -> { send(files): answer or null (not running), startThenSend(files): the same after the start
-//      link was clicked, waiting up to 40 s for Crystal Studio to come up, cancel() }
+// -> { send(files): the server's answer, or null when Crystal Studio isn't running here; cancel() }
 export function illustratorWindow() {
   let win = null;
   // a new window each time (a left-over one from an earlier click may be stuck on an error page)
@@ -51,14 +40,6 @@ export function illustratorWindow() {
     async send(files) {
       if (!(await first)) return null;
       return deliver(files);
-    },
-    async startThenSend(files) {
-      const until = Date.now() + 40000;
-      while (Date.now() < until && win && !win.closed) {
-        try { win.location.href = BASE + "/illustrator.html?try=" + Date.now(); } catch (e) { return null; }
-        if (await waitFor("crystal-illustrator-ready", 3000)) return deliver(files);
-      }
-      return null;
     },
     cancel() { try { win && win.close(); } catch (e) {} },
   };

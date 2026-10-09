@@ -10,7 +10,7 @@ import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, M
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
 import { store } from "./store.js";
-import { illustratorWindow, START_LINK, startStudioLink } from "./to-illustrator.js";
+import { illustratorWindow, START_LINK } from "./to-illustrator.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
 import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
 
@@ -268,15 +268,35 @@ function renderSources() {
 let unlocked = false;
 try { unlocked = sessionStorage.getItem("crystal-unlocked") === "1"; } catch (e) {}
 async function unlock() {
-  if (unlocked || !EDIT_PASSWORD_SHA256) return true;
-  const pw = await askText("Password to change a design that isn't from the Excel:", { password: true, okLabel: "Open" });
+  if (unlocked || !EDIT_PASSWORD_SHA256) return setAdmin(true), true;
+  const pw = await askText("Admin password (to change the designs for everyone):", { password: true, okLabel: "Unlock" });
   if (pw == null) return false;
   const hex = [...new Uint8Array(await crypto.subtle.digest("SHA-256", new TextEncoder().encode(pw)))].map((b) => b.toString(16).padStart(2, "0")).join("");
   if (hex !== EDIT_PASSWORD_SHA256) { toast("Wrong password.", "bad"); return false; }
   unlocked = true;
   try { sessionStorage.setItem("crystal-unlocked", "1"); } catch (e) {}
+  setAdmin(true);
   return true;
 }
+
+// Admin (🔒 Admin, the password, once per tab): sees what changes the designs for everyone —
+// Save as default template, Remove from background / Put back, the Crystal templates panel
+// (import, open any design, delete), New / Open / Save, Import Excel, the Excel column chips.
+// Everyone else only changes the crystals of the order they came from (Save for this order only).
+function setAdmin(on) {
+  document.body.classList.toggle("admin", on);
+  $("adminBtn").textContent = on ? "🔓 Admin (lock)" : "🔒 Admin";
+}
+setAdmin(unlocked);
+$("adminBtn").onclick = async () => {
+  if (unlocked) {
+    unlocked = false;
+    try { sessionStorage.removeItem("crystal-unlocked"); } catch (e) {}
+    setAdmin(false);
+    return toast("Locked: only Save for this order only is shown now.");
+  }
+  if (await unlock()) toast("Admin: Save as default template, Remove from background and the templates panel are shown.");
+};
 async function openTemplate(id) {
   const key = "lib|" + id;
   if (key === S.key) return;
@@ -638,7 +658,7 @@ editor.initEditor({
   valueOf: (f) => fieldValue(row(), f),
   bound: onBound,
   dropField: (f, p) => { if (S.key) addField(f, p); },
-  save: () => saveDesign(),
+  save: () => (unlocked ? saveDesign() : S.order ? $("saveOrder").click() : null),
 });
 
 // ------------------------------------------------------------------ download
@@ -744,12 +764,10 @@ async function openInIllustrator(all) {
   if (!r) {
     bridge.cancel();
     // not running: start it (a PC set up once with Install Crystal Studio link.bat), or download them
-    if (await ask("Crystal Studio isn't running on this PC. Start it now? (Chrome may ask “Open …?” first: choose Open.)\n\nCancel downloads the files instead.", "Start Crystal Studio")) {
-      startStudioLink();
-      toast("Starting Crystal Studio on this PC…");
-      const again = illustratorWindow();
-      r = await again.startThenSend(files);
-      if (!r) { again.cancel(); toast("Crystal Studio didn't start: this computer isn't set up yet. Download › Set up this computer for Illustrator, double-click that file once, then try again.", "bad"); }
+    if (await ask("Crystal Studio isn't running on this PC. Start it now? (Chrome may ask “Open …?” first: choose Open and tick Always allow.) Then click Open in Illustrator again.\n\nCancel downloads the files instead.", "Start Crystal Studio")) {
+      location.href = START_LINK; // Windows starts it (a PC set up once with Install Crystal Studio link.bat)
+      try { localStorage.setItem("crystal-local", "yes"); } catch (e) {}
+      return toast("Starting Crystal Studio… In a few seconds, click Download › Open in Illustrator again. (Nothing starts? Download › Set up this computer for Illustrator.)");
     }
   }
   try { localStorage.setItem("crystal-local", r ? "yes" : "no"); } catch (e) {}
@@ -913,8 +931,13 @@ $("saveOrder").onclick = async () => {
   try {
     await store.saveDesign({ id: orderDesignId(S.order), name: `Order ${S.order} — its own crystals`, data: { order: S.order, custom } });
     S.dirty = false;
-    toast(n ? `Saved ${n} crystal${n === 1 ? "" : "s"} for order ${S.order} only. The website's preview shows ${n === 1 ? "it" : "them"} now.`
-      : `Order ${S.order} uses the default template again.`);
+    toast(n ? `Saved ${n} crystal${n === 1 ? "" : "s"} for order ${S.order} only. Back to the website…`
+      : `Order ${S.order} uses the default template again. Back to the website…`);
+    // back to the order on the website (this tab was opened by its ✎ Edit; its preview already shows it)
+    setTimeout(() => {
+      window.close();
+      setTimeout(() => toast("Saved. Switch back to the order website's tab: its Crystal Preview already shows it."), 400);
+    }, 1200);
   } catch (e) { toast("Couldn't save: " + e.message, "bad"); }
   $("saveOrder").disabled = false;
 };
