@@ -138,6 +138,10 @@ async function showAll(groups) {
   document.getElementById("aOut").onclick = () => setAllZoom(-1);
   document.getElementById("aGen").onclick = () => generateAll(false);
   document.getElementById("aAi").onclick = () => generateAll(true);
+  document.getElementById("aGenMsg").onclick = (e) => {
+    if (e.target.id === "aHow") { e.preventDefault(); alert(HOW); }
+    if (e.target.id === "aRetry") { e.preventDefault(); remember("crystal-local", "yes"); generateAll(true); }
+  };
   out.onclick = (e) => {
     const b = e.target.closest(".cell");
     if (!b) return;
@@ -164,6 +168,22 @@ async function showAll(groups) {
 
 // every crystal of the order, full size, in one .zip: "SA4 - DESIGN B - TOKOH AKADEMIK PUTERI x1.png"
 let generating = false;
+const remember = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
+function saveFile(blob, name) {
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = name;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+}
+const HOW = "To make them open in Illustrator by themselves (once on each computer, nothing to install):\n\n" +
+  "1. Windows: right-click any .svg file › Open with › Choose another app › Adobe Illustrator › tick “Always”.\n" +
+  "2. Chrome: after a download, click the file's ⋮ in the downloads list (top right) › “Always open files of this type”.\n" +
+  "3. If Chrome asks to download multiple files, choose Allow.\n\n" +
+  "From then on, the button opens every crystal in Illustrator. There: File › Save As › Adobe Illustrator (.ai).";
+
 // ai: as Illustrator files. On a PC running Crystal Studio (Start Studio.bat) they open straight in
 // Illustrator and are saved there as .ai (see to-illustrator.js); anywhere else they download in one
 // .zip (as .svg, to Save As .ai).
@@ -175,7 +195,9 @@ async function generateAll(ai) {
   generating = true;
   btn.disabled = true;
   const say = (t) => { if (msg) msg.textContent = t; };
-  const bridge = ai ? illustratorWindow() : null; // opened now, while it's a click
+  const sayHtml = (h) => { if (msg) msg.innerHTML = h; };
+  // opened now, while it's a click; not on a PC where Crystal Studio wasn't running last time
+  const bridge = ai && remember("crystal-local") !== "no" ? illustratorWindow() : null;
   try {
     const files = [], used = new Set();
     let n = 0, bad = 0;
@@ -193,26 +215,29 @@ async function generateAll(ai) {
     if (bridge) {
       say("Opening in Illustrator…");
       const r = await bridge.send(files.map((f) => ({ name: f.name, svg: f.data })));
+      remember("crystal-local", r ? "yes" : "no");
       if (r) return say(r.ok ? `Opening ${files.length} crystal${files.length === 1 ? "" : "s"} in Illustrator${badNote}; each is saved as .ai in ${r.folder}.`
         : `Couldn't open Illustrator: ${r.error || "no answer"}`);
+    }
+    // Illustrator files without Crystal Studio on this PC: each crystal downloads as its own file, so
+    // Chrome can open them in Illustrator by itself (Chrome: "Always open files of this type";
+    // Windows: Illustrator as the app for .svg). Pictures still come as one .zip.
+    if (ai) {
+      say(`Downloading ${files.length} file${files.length === 1 ? "" : "s"}…`);
+      for (const f of files) {
+        saveFile(new Blob([f.data], { type: "image/svg+xml" }), f.name + ".svg");
+        await new Promise((r) => setTimeout(r, 350)); // one after another, or the browser drops some
+      }
+      sayHtml(`Downloaded ${files.length} file${files.length === 1 ? "" : "s"}${badNote}: open them in Illustrator (words editable), then Save As .ai. ` +
+        `<a href="#" id="aHow">Make them open in Illustrator by themselves</a> · <a href="#" id="aRetry">Try Crystal Studio on this PC again</a>`);
+      return;
     }
     if (!window.JSZip) return say("Couldn't generate (zip tool not loaded).");
     say("Packing…");
     const zip = new JSZip();
-    for (const f of files) {
-      if (ai) zip.file(f.name + ".svg", f.data);
-      else zip.file(f.name + ".png", f.data.split(",")[1], { base64: true });
-    }
-    const blob = await zip.generateAsync({ type: "blob" });
-    const a = document.createElement("a");
-    a.href = URL.createObjectURL(blob);
-    a.download = ai ? "crystals for Illustrator.zip" : "crystals.zip";
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(() => URL.revokeObjectURL(a.href), 60000);
-    say(`Done: ${files.length} crystal${files.length === 1 ? "" : "s"} downloaded${badNote}.` +
-      (ai ? " Couldn't reach Crystal Studio on this PC, so they were downloaded instead: start Start Studio.bat (the latest version) and click again to open them straight in Illustrator." : ""));
+    for (const f of files) zip.file(f.name + ".png", f.data.split(",")[1], { base64: true });
+    saveFile(await zip.generateAsync({ type: "blob" }), "crystals.zip");
+    say(`Done: ${files.length} crystal${files.length === 1 ? "" : "s"} downloaded${badNote}.`);
   } finally {
     generating = false;
     if (btn.isConnected) btn.disabled = false;

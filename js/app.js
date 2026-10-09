@@ -718,7 +718,10 @@ async function illustratorJob(all) {
 // editable, artwork at print quality) go to Crystal Studio's program on this PC, which opens them
 // in Illustrator. Works from the online studio too, as long as Start Studio.bat runs on this PC.
 async function openInIllustrator(all) {
-  const bridge = illustratorWindow(); // opened now, while it's a click
+  // opened now, while it's a click; not on a PC where Crystal Studio wasn't running last time
+  let wasOff = null;
+  try { wasOff = localStorage.getItem("crystal-local") === "no"; } catch (e) {}
+  const bridge = wasOff ? { send: async () => null, cancel() {} } : illustratorWindow();
   const files = [], used = new Set();
   const rows = all ? [...new Set(S.rows.map((_, i) => canon(i)))] : [S.row];
   for (const [n, r] of rows.entries()) {
@@ -738,16 +741,18 @@ async function openInIllustrator(all) {
   if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
   toast("Opening in Illustrator…");
   const r = await bridge.send(files);
+  try { if (!wasOff) localStorage.setItem("crystal-local", r ? "yes" : "no"); } catch (e) {}
   if (r) return toast(r.ok ? `Opening ${files.length} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`, r.ok ? "" : "bad");
   // without Start Studio.bat: download them (one .svg, or a .zip), to open in Illustrator by hand
   {
-    if (files.length === 1 || !window.JSZip) for (const f of files) downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
-    else {
-      const zip = new JSZip();
-      for (const f of files) zip.file(f.name + ".svg", f.svg);
-      downloadBlob(await zip.generateAsync({ type: "blob" }), safeName(S.design.name) + " - for Illustrator.zip");
+    // each its own file, so Chrome can open them in Illustrator by itself ("Always open files of
+    // this type", with Illustrator as Windows' app for .svg)
+    for (const f of files) {
+      downloadBlob(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
+      await new Promise((res) => setTimeout(res, 350));
     }
-    return toast("Downloaded. Open it in Illustrator (words editable), then File › Save As › .ai. With Start Studio.bat running, it opens in Illustrator by itself.");
+    try { if (wasOff) localStorage.removeItem("crystal-local"); } catch (e) {} // next time, look for Crystal Studio on this PC again
+    return toast("Downloaded: open in Illustrator (words editable), then Save As .ai. Set Illustrator as the app for .svg and Chrome's “Always open files of this type” to have them open by themselves.");
   }
 }
 
