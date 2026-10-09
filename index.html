@@ -15,6 +15,8 @@
 .elrow .x{border:0;background:none;cursor:pointer;font-size:16px;color:inherit}
 .colsbox{margin-top:8px}
 .tplnow{margin:0 0 8px}
+/* what only the admin sees (🔒 Admin, the password): changing designs for everyone */
+body:not(.admin) .admin-only{display:none !important}
 .sources .src{cursor:pointer}
 .sources .src.on{border-color:var(--acc2,var(--acc));box-shadow:0 0 8px rgba(166,77,255,.35)}
 .srcdesigns{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
@@ -43,10 +45,11 @@
     <input id="designName" value="Untitled design" aria-label="Design name" spellcheck="false" autocomplete="off">
     <span id="saveState" class="hint"></span>
     <div class="spacer"></div>
+    <button id="adminBtn" title="Change the designs for everyone (Save as default template, remove from background, import…): asks the password">🔒 Admin</button>
     <button id="backToOrder" hidden title="Close this tab and go back to the order on the website (its Crystal Preview already shows what you saved)">↩ Back to the order</button>
-    <button id="newBtn">New</button>
-    <button id="openBtn">Open</button>
-    <button id="saveBtn" class="primary" title="Save (Ctrl+S)">Save</button>
+    <button class="admin-only" id="newBtn">New</button>
+    <button class="admin-only" id="openBtn">Open</button>
+    <button id="saveBtn" class="admin-only primary" title="Save (Ctrl+S)">Save</button>
     <div class="menu">
       <button aria-haspopup="true" aria-expanded="false">Download ▾</button>
       <div class="menu-list right" role="menu">
@@ -69,7 +72,7 @@
       <span class="hint" id="srcHint">Sample data (2 rows)</span>
       <div class="spacer"></div>
       <select id="sheetSel" hidden aria-label="Sheet"></select>
-      <label class="btn">Import Excel<input type="file" id="excelFile" accept=".xlsx,.xlsm,.xls,.csv"></label>
+      <label class="admin-only btn">Import Excel<input type="file" id="excelFile" accept=".xlsx,.xlsm,.xls,.csv"></label>
     </div>
     <div class="xltable" id="xlTable" role="grid" aria-label="Excel rows — click one to open its crystal"></div>
     <div class="rowsbar">
@@ -80,7 +83,7 @@
       <button id="resetRow" title="Throw away your changes on this crystal">Reset</button>
       <button id="applyAll" title="Copy positions, fonts and extra elements from this row to every row that uses the same design">Apply layout to all</button>
       <button id="saveOrder" class="primary" hidden title="Keep these crystals as changed here for this order only: the order website shows them; other orders keep the default">Save for this order only</button>
-      <button id="saveDefault" class="primary" title="Keep where the header, position and name sit on this design, for every row and for the order website; their font, colour and outline become the master for every design">Save as default template</button>
+      <button id="saveDefault" class="admin-only primary" title="Keep where the header, position and name sit on this design, for every row and for the order website; their font, colour and outline become the master for every design">Save as default template</button>
     </div>
     <p class="meta" id="meta"></p>
     <p id="warn" class="warn" role="status"></p>
@@ -92,8 +95,8 @@
       <div class="tg">
         <button id="addText">＋ Text</button>
         <label class="btn">＋ Image<input type="file" id="addImage" accept="image/*"></label>
-        <button id="eraseBtn" aria-pressed="false" title="Then click the school logo, or anything else on the design's background, to take it out of this design for good">Remove from background</button>
-        <button id="restoreBg" title="Put back everything taken out of this design's background (the logo too)">Put back</button>
+        <button class="admin-only" id="eraseBtn" aria-pressed="false" title="Then click the school logo, or anything else on the design's background, to take it out of this design for good">Remove from background</button>
+        <button class="admin-only" id="restoreBg" title="Put back everything taken out of this design's background (the logo too)">Put back</button>
       </div>
       <div class="spacer"></div>
       <div class="tg">
@@ -108,7 +111,7 @@
      </div>
 
      <div class="tb-row ctx" id="ctxBar">
-      <span class="hint" id="ctxHint">Click anything on the design to change it — font, size, colour, position…</span>
+      <span class="admin-only hint" id="ctxHint">Click anything on the design to change it — font, size, colour, position…</span>
       <div class="tg" id="tgText" hidden>
         <input id="fFont" class="font" list="fontList" aria-label="Font" placeholder="Font" spellcheck="false">
         <input id="fSize" type="number" min="1" max="999" step="0.5" aria-label="Font size in pt" title="Size (pt)">
@@ -149,8 +152,8 @@
           <select id="elAddCol" aria-label="Add an Excel column"></select>
         </div>
         <div class="ellist" id="elList"></div>
-        <p class="hint" style="margin:10px 0 4px">Excel columns (drag onto a text to link it)</p>
-        <div class="chips" id="chips"></div>
+        <p class="admin-only hint" style="margin:10px 0 4px">Excel columns (drag onto a text to link it)</p>
+        <div class="admin-only chips" id="chips"></div>
       </aside>
       <div class="stagebox">
         <div id="stageWrap">
@@ -164,7 +167,7 @@
     <p class="hint tips">Double-click text to edit · drag a chip onto a text to fill it from the Excel · arrows nudge (Shift = 10) · Ctrl+Z undo · Ctrl+D duplicate · Del delete · Ctrl+scroll zoom</p>
   </section>
 
-  <section class="panel" aria-labelledby="tpH">
+  <section class="admin-only panel" aria-labelledby="tpH">
     <div class="panel-head">
       <h2 id="tpH">Crystal templates</h2>
       <div class="spacer"></div>
