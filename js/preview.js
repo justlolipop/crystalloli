@@ -12,7 +12,7 @@ import { store, onLibraryChanged } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll, hiResBackground } from "./library.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
-import { illustratorWindow } from "./to-illustrator.js";
+import { illustratorWindow, START_LINK, startStudioLink } from "./to-illustrator.js";
 
 const DPI = 150;      // sharp enough to zoom in on the words
 const BASE_H = 380;   // the picture's height on the page before zooming (px)
@@ -140,7 +140,14 @@ async function showAll(groups) {
   document.getElementById("aAi").onclick = () => generateAll(true);
   document.getElementById("aGenMsg").onclick = (e) => {
     if (e.target.id === "aHow") { e.preventDefault(); alert(HOW); }
-    if (e.target.id === "aRetry") { e.preventDefault(); remember("crystal-local", "yes"); generateAll(true); }
+    if (e.target.id === "aStart") {
+      // first ask Windows to start Crystal Studio (crystalstudio://open; Chrome asks before), then
+      // open the window to it — in this order, while it's still the click
+      e.preventDefault();
+      startStudioLink();
+      startStudio();
+    }
+    if (e.target.id === "aDownload") { e.preventDefault(); downloadSvgs(); }
   };
   out.onclick = (e) => {
     const b = e.target.closest(".cell");
@@ -166,7 +173,7 @@ async function showAll(groups) {
   sendHeight();
 }
 
-// every crystal of the order, full size, in one .zip: "SA4 - DESIGN B - TOKOH AKADEMIK PUTERI x1.png"
+// every crystal of the order, full size, one file each: "SA4 - DESIGN B - TOKOH AKADEMIK PUTERI x1.png"
 let generating = false;
 const remember = (k, v) => { try { if (v === undefined) return localStorage.getItem(k); localStorage.setItem(k, v); } catch (e) { return null; } };
 function saveFile(blob, name) {
@@ -184,9 +191,42 @@ const HOW = "To make them open in Illustrator by themselves (once on each comput
   "3. If Chrome asks to download multiple files, choose Allow.\n\n" +
   "From then on, the button opens every crystal in Illustrator. There: File › Save As › Adobe Illustrator (.ai).";
 
-// ai: as Illustrator files. On a PC running Crystal Studio (Start Studio.bat) they open straight in
-// Illustrator and are saved there as .ai (see to-illustrator.js); anywhere else they download in one
-// .zip (as .svg, to Save As .ai).
+// the Illustrator files of the last click, while Crystal Studio wasn't running on this PC
+let pending = null;
+const msgEl = () => document.getElementById("aGenMsg");
+const tellMsg = (t, html) => { const m = msgEl(); if (m) m[html ? "innerHTML" : "textContent"] = t; };
+const opened = (r, n) => r.ok ? `Opening ${n} crystal${n === 1 ? "" : "s"} in Illustrator; each is saved as .ai in ${r.folder}.` : `Couldn't open Illustrator: ${r.error || "no answer"}`;
+
+// ▶ Start Crystal Studio: the link itself asks Windows to start it (Chrome asks first); meanwhile a
+// window to it tries until it's up, then the files go to Illustrator
+async function startStudio() {
+  if (!pending) return;
+  const files = pending, bridge = illustratorWindow();
+  tellMsg("Starting Crystal Studio on this PC… (if Chrome asks “Open …?”, choose Open, and tick Always allow)");
+  const r = await bridge.startThenSend(files);
+  if (r) {
+    pending = null;
+    remember("crystal-local", "yes");
+    return tellMsg(opened(r, files.length));
+  }
+  bridge.cancel();
+  tellMsg(`Crystal Studio didn't start. On this PC, run <b>Install Crystal Studio link.bat</b> once (in the Crystal Studio folder), or <a href="#" id="aDownload">download the files instead</a>.`, true);
+}
+async function downloadSvgs() {
+  if (!pending) return;
+  const files = pending;
+  pending = null;
+  tellMsg(`Downloading ${files.length} file${files.length === 1 ? "" : "s"}…`);
+  for (const f of files) {
+    saveFile(new Blob([f.svg], { type: "image/svg+xml" }), f.name + ".svg");
+    await new Promise((r) => setTimeout(r, 350)); // one after another, or the browser drops some
+  }
+  tellMsg(`Downloaded ${files.length} file${files.length === 1 ? "" : "s"}: open them in Illustrator (words editable), then Save As .ai. <a href="#" id="aHow">Make them open in Illustrator by themselves</a>`, true);
+}
+
+// ai: as Illustrator files. On a PC running Crystal Studio they open straight in Illustrator and are
+// saved there as .ai (see to-illustrator.js). Not running: ▶ Start Crystal Studio (a PC set up once
+// with Install Crystal Studio link.bat), or download them (one .svg each, to Save As .ai).
 async function generateAll(ai) {
   if (generating) return;
   const btn = document.getElementById(ai ? "aAi" : "aGen"), msg = document.getElementById("aGenMsg");
@@ -212,24 +252,18 @@ async function generateAll(ai) {
       } catch (e) { bad++; }
     }
     const badNote = bad ? ` (${bad} couldn't be drawn)` : "";
-    if (bridge) {
-      say("Opening in Illustrator…");
-      const r = await bridge.send(files.map((f) => ({ name: f.name, svg: f.data })));
-      remember("crystal-local", r ? "yes" : "no");
-      if (r) return say(r.ok ? `Opening ${files.length} crystal${files.length === 1 ? "" : "s"} in Illustrator${badNote}; each is saved as .ai in ${r.folder}.`
-        : `Couldn't open Illustrator: ${r.error || "no answer"}`);
-    }
-    // Illustrator files without Crystal Studio on this PC: each crystal downloads as its own file, so
-    // Chrome can open them in Illustrator by itself (Chrome: "Always open files of this type";
-    // Windows: Illustrator as the app for .svg). Pictures still come as one .zip.
     if (ai) {
-      say(`Downloading ${files.length} file${files.length === 1 ? "" : "s"}…`);
-      for (const f of files) {
-        saveFile(new Blob([f.data], { type: "image/svg+xml" }), f.name + ".svg");
-        await new Promise((r) => setTimeout(r, 350)); // one after another, or the browser drops some
+      const svgs = files.map((f) => ({ name: f.name, svg: f.data }));
+      if (bridge) {
+        say("Opening in Illustrator…");
+        const r = await bridge.send(svgs);
+        if (r) { remember("crystal-local", "yes"); return say(opened(r, files.length) + badNote); }
+        bridge.cancel();
+        remember("crystal-local", "no"); // next time: no window, straight to the choice below
       }
-      sayHtml(`Downloaded ${files.length} file${files.length === 1 ? "" : "s"}${badNote}: open them in Illustrator (words editable), then Save As .ai. ` +
-        `<a href="#" id="aHow">Make them open in Illustrator by themselves</a> · <a href="#" id="aRetry">Try Crystal Studio on this PC again</a>`);
+      // Crystal Studio isn't running on this PC: start it (a PC set up once), or just download them
+      pending = svgs;
+      sayHtml(`Crystal Studio isn't running on this PC.${badNote} <a href="${START_LINK}" id="aStart" class="gen-link">▶ Start Crystal Studio</a> · <a href="#" id="aDownload">Download the files instead</a>`);
       return;
     }
     say(`Downloading ${files.length} picture${files.length === 1 ? "" : "s"}…`);
