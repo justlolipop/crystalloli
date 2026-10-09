@@ -22,6 +22,10 @@ const out = document.getElementById("out");
 const tabs = document.getElementById("tabs");
 const params = new URLSearchParams(location.search);
 if (params.get("theme") === "dark") document.documentElement.dataset.theme = "dark";
+// who is looking, set by the order website: production (everything), teacher (can change the
+// crystals of their order, no Illustrator), view (sales: look only, no changing, no Illustrator)
+const ROLE = ["teacher", "view"].includes(params.get("role")) ? params.get("role") : "production";
+const CAN_AI = ROLE === "production", CAN_EDIT = ROLE !== "view";
 
 const tell = (msg) => { if (window.parent !== window) window.parent.postMessage(msg, "*"); };
 // the frame grows with this page: told on every size change, after every drawing, and now and then
@@ -120,7 +124,7 @@ async function showAll(groups) {
       <span class="muted">${ready} crystal${ready === 1 ? "" : "s"} · click one to see it alone</span>
       <span class="zoom"><button type="button" id="aOut" aria-label="Smaller">−</button><span id="aZoom">${Math.round(allZoom * 100)}%</span><button type="button" id="aIn" aria-label="Bigger">＋</button></span>
       <button type="button" class="gen" id="aGen"${ready ? "" : " disabled"} title="Every crystal in one PDF, a page each at its real size (300 DPI), to check, send or print">⬇ All crystals (PDF)</button>
-      <button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words editable, artwork at print quality)">Open in Illustrator (.ai)</button>
+      ${CAN_AI ? `<button type="button" class="gen" id="aAi"${ready ? "" : " disabled"} title="Every crystal opened in Adobe Illustrator and saved as .ai (words editable, artwork at print quality)">Open in Illustrator (.ai)</button>` : ""}
 
       <span id="aGenMsg" class="muted"></span>
     </div>
@@ -140,7 +144,7 @@ async function showAll(groups) {
   document.getElementById("aOut").onclick = () => setAllZoom(-1);
   document.getElementById("aGen").onclick = () => generateAll(false);
   // one button: Open in Illustrator; when Crystal Studio isn't running here it becomes ▶ Start
-  document.getElementById("aAi").onclick = () => generateAll(true);
+  if (CAN_AI) document.getElementById("aAi").onclick = () => generateAll(true);
   out.onclick = (e) => {
     const b = e.target.closest(".cell");
     if (!b) return;
@@ -323,8 +327,9 @@ function showTab(g) {
   // (after the #, so they never leave this computer)
   document.getElementById("vEdit").onclick = (e) => {
     e.preventDefault();
+    if (!CAN_EDIT) return;
     const g = slides[at].g;
-    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, rows: g.tiles.map((t) => t.row) })), "_blank");
+    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, rows: g.tiles.map((t) => t.row) })), "_blank");
   };
   draw();
 }
@@ -350,7 +355,7 @@ async function draw() {
   document.getElementById("vJenis").textContent = sl.g.jenis;
   document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "") +
     (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" : "");
-  document.getElementById("vEdit").hidden = !sl.it;
+  document.getElementById("vEdit").hidden = !sl.it || !CAN_EDIT;
   document.getElementById("vCap").textContent = sl.t ? [sl.t.row.category, caption(sl.t.row)].filter(Boolean).join(" · ") : "";
   document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
   const stage = document.getElementById("vStage");
