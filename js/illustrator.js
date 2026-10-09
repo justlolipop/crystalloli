@@ -301,7 +301,9 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var it = parts[0];
     if (parts.length > 1) {
       it = layer.groupItems.add();
-      for (var k = 0; k < parts.length; k++) parts[k].move(it, ElementPlacement.PLACEATEND); // first one at the back
+      // each one in front of the one before: the outlines behind, the letters' own colour on top
+      // (PLACEATBEGINNING is the front of a group; PLACEATEND, its back)
+      for (var k = 0; k < parts.length; k++) parts[k].move(it, ElementPlacement.PLACEATBEGINNING);
       it.name = String(b.text).replace(/\s+/g, " ").substr(0, 60);
     }
     if (b.flipX) it.resize(-100, 100);
