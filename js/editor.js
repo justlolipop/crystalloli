@@ -285,6 +285,9 @@ function lightColour(c) {
 }
 function outlineBehind(o) {
   if (isText(o) && o.stroke && o.strokeWidth > 0 && o.paintFirst !== "stroke" && lightColour(o.stroke)) o.set("paintFirst", "stroke");
+  // a text filled from the Excel has one look: colours set on single letters (kept from editing)
+  // could be white or see-through and hide the words while the toolbar shows the text's own colour
+  if (isText(o) && o.data && o.data.field && o.styles && Object.keys(o.styles).length) { o.styles = {}; o.dirty = true; }
   return o;
 }
 
