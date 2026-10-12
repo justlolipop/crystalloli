@@ -528,7 +528,7 @@ $("saveDefault").onclick = async () => {
   if (!it || it.source !== "pdf") return toast("Pick a crystal design (.ai) first.", "bad");
   const texts = editor.objects().filter((o) => editor.isText(o) && o.data && MASTER_FIELDS.includes(o.data.field));
   if (!texts.length) return toast("This crystal has no header, position or name text to save.", "bad");
-  if (!await ask(`Save this crystal's header, position and name as the default for “${it.name}”?\nTheir font, colour and outline become the master for every design.`)) return;
+  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline become the master for every design.`)) return;
   const layout = { ...(it.layout || {}) }, look = { ...getMaster() };
   for (const o of texts) {
     const f = o.data.field, sy = o.scaleY || 1, size = Math.round(o.fontSize * sy * 100) / 100;
@@ -550,7 +550,11 @@ $("saveDefault").onclick = async () => {
       charSpacing: o.charSpacing || 0, lineHeight: o.lineHeight || 1, scaleX: Math.round(((o.scaleX || 1) / sy) * 1000) / 1000 };
   }
   try {
-    Object.assign(it, await store.saveLibrary({ id: it.id, layout }));
+    // the school's logo, as placed here: where (and how big) every school's logo goes on this design
+    const lg = editor.objects().find((o) => o.data && o.data.logo);
+    const b = lg && lg.getBoundingRect(true, true);
+    const logoBox = b ? { l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height } : undefined;
+    Object.assign(it, await store.saveLibrary({ id: it.id, layout, logoBox }));
     setMaster(await store.saveMaster(look));
   } catch (e) { return toast(e.message, "bad"); }
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
