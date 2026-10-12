@@ -52,11 +52,38 @@ export async function toDataUrl(src) {
   } catch (e) { return null; }
 }
 
-// the logo for an order's crystals (data URL) or null: the one uploaded with the order, else the
-// kept one for its school
-export async function orderLogo({ logo, school }, list) {
-  const own = await toDataUrl(logo);
-  if (own) return own;
-  const kept = logoFor(school, list);
-  return kept ? toDataUrl(fileUrl(kept.file)) : null;
+// the kept logo whose school's name is written in these words (a crystal's header: "SK TAMAN SERI
+// PAGI ANUGERAH …"), or null: the longest name found, as whole words
+export function logoInText(text, list) {
+  const t = " " + schoolKey(text) + " ";
+  let best = null;
+  for (const x of Array.isArray(list) ? list : []) {
+    const k = schoolKey(x.name);
+    if (k.length < 5 || !t.includes(" " + k + " ")) continue;
+    if (!best || k.length > best.k.length) best = { x, k };
+  }
+  return best ? best.x : null;
+}
+
+const pictures = new Map(); // kept logo file -> its data URL (a promise), read once
+const keptPicture = (x) => {
+  if (!pictures.has(x.file)) pictures.set(x.file, toDataUrl(fileUrl(x.file)));
+  return pictures.get(x.file);
+};
+
+// For an order's crystals: row -> the logo (data URL) or null. The logo uploaded with the order,
+// else the kept one for the order's school, else the kept one whose school is named in the
+// crystal's own words (its header first).
+export function logoPicker({ logo, school }, list) {
+  const own = toDataUrl(logo);
+  const bySchool = logoFor(school, list);
+  return async (row) => {
+    const o = await own;
+    if (o) return o;
+    if (bySchool) return keptPicture(bySchool);
+    const r = row || {};
+    const found = logoInText(r.event_header || "", list) ||
+      logoInText(Object.values(r).filter((v) => typeof v === "string").join(" \n "), list);
+    return found ? keptPicture(found) : null;
+  };
 }
