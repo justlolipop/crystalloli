@@ -98,9 +98,20 @@ function wordBoxes(item) {
     const l = t.originX === "center" ? t.left - w / 2 : t.originX === "right" ? t.left - w : t.left;
     return { l, r: l + w, t: t.top, b: t.top + lh * lines.length, size, text: t };
   });
-  for (const o of item.outlined || []) boxes.push({ l: o.l, r: o.r, t: o.t, b: o.b, size: Math.min(o.b - o.t, item.height * 0.08), text: null });
+  for (const o of item.outlined || []) boxes.push({ l: o.l, r: o.r, t: o.t, b: o.b, size: Math.min(o.b - o.t, item.height * 0.08), text: null,
+    look: o.fill ? { fill: o.fill } : null });
   return boxes.sort((a, b) => a.t - b.t);
 }
+
+// the look of a design's own words, for the text put there: live text — its font, colour and
+// outline as in the .ai (no outline when it had none); words drawn as shapes — their colour
+function templateLook(b) {
+  if (!b) return null;
+  if (b.text) return { stroke: null, strokeWidth: 0, outerStroke: null, outerStrokeWidth: 0, ...lookOf(b.text), family: b.text.ps ? "" : b.text.family || "" };
+  return b.look || null;
+}
+const FONT_KEYS = ["ps", "family", "bold", "italic"];
+const fontOnly = (l) => Object.fromEntries(FONT_KEYS.filter((k) => l && l[k] !== undefined).map((k) => [k, l[k]]));
 
 // where the 3 texts go on this design, guessed from its own words: the top one is the header, the
 // bottom one the name, the biggest one between them the position. -> { field: { cx, top, size, maxW, flipX, look } }
@@ -120,7 +131,7 @@ export function guessLayout(item) {
       cx, top: b ? b.t : H * fallback[i][0], size: b ? b.size : H * fallback[i][1],
       // the crystal's shape is narrower than its box, and the words shouldn't touch its edge or the
       // artwork at the sides: keep to the middle 60%
-      maxW: Math.min(W * 0.6, 0.8 * 2 * Math.min(cx, W - cx)), flipX: mirrored, look: b && b.text ? lookOf(b.text) : null,
+      maxW: Math.min(W * 0.6, 0.8 * 2 * Math.min(cx, W - cx)), flipX: mirrored, look: templateLook(b),
     };
   });
   return out;
@@ -136,7 +147,11 @@ async function masterTexts(item, row) {
     const text = fieldValue(row, f);
     if (!text.trim()) continue;
     const g = guess[f], s = saved[f];
-    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...(master[f] || {}) };
+    // its look: as set on this design (Save as default template), else its own words' in the .ai,
+    // else the J&E look; the master (from any design) only gives the font
+    const own = item.look && item.look[f];
+    const look = own ? { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...own }
+      : { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...fontOnly(master[f]), ...(g.look || {}) };
     const css = look.ps ? await useFont(look.ps, look.family, look.style) : `"${look.family}", sans-serif`;
     const base = s ? s.fontSize : g.size, maxW = s ? s.maxW : g.maxW;
     const below = tops.filter((t, j) => j !== i && t > tops[i] + 1);
@@ -254,6 +269,20 @@ function logoAndWords(plan, r) {
   }
   // old words drawn as shapes; small "text" pieces are usually bits of a picture, not words
   const words = els.filter((e) => e.kind === "text" && !drop.has(e) && w(e) >= r.w * 0.2);
+  // a word's colour: the fill that covers most of its letters (white only when it's all white —
+  // white copies behind the letters are their outline)
+  const byOp = new Map(plan.items.map((it) => [it.op, it]));
+  const colourOf = (e) => {
+    const area = new Map();
+    for (const op of e.ops) {
+      const it = byOp.get(op);
+      if (!it || !it.path || it.stroke || !/^#[0-9a-f]{6}$/i.test(it.color || "")) continue;
+      area.set(it.color, (area.get(it.color) || 0) + (it.x1 - it.x0) * (it.y1 - it.y0));
+    }
+    const all = [...area].sort((a, b) => b[1] - a[1]);
+    const ink = all.find(([c]) => !/^#f[a-f0-9]f[a-f0-9]f[a-f0-9]$/i.test(c));
+    return (ink || all[0] || [null])[0];
+  };
   for (const e of words) drop.add(e);
   // where the logo was (pt, design): the school's own logo goes there (see logoPlace)
   const marks = [logo, pic].filter(Boolean);
@@ -263,7 +292,7 @@ function logoAndWords(plan, r) {
   } : null;
   return {
     hide: [...[...drop].flatMap((e) => e.ops), ...extraOps],
-    outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y })),
+    outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y, fill: colourOf(e) })),
     logoBox,
   };
 }
@@ -810,8 +839,8 @@ export async function pieceAt(item, x, y) {
 // a picture) still have it: they get the same clean-up once, without importing them again. What was
 // removed by hand stays removed; "Put back" afterwards isn't undone (cleaned marks it as done).
 // -> the changes to save ({ id, cleaned, hide, outlined, background? }), or null when already done
-// 2: also where the logo was (logoBox)
-export const CLEAN_VERSION = 2;
+// 2: also where the logo was (logoBox) · 3: the colour of its old words drawn as shapes
+export const CLEAN_VERSION = 3;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
@@ -820,9 +849,10 @@ export async function autoClean(item) {
   const found = plan ? logoAndWords(plan, { x, y, w, h }) : { hide: [], outlined: [] };
   // cleaned before: only where its logo was is new (what's left out stays as it is — a logo put
   // back by hand stays back)
-  if (item.cleaned) return { id: item.id, cleaned: CLEAN_VERSION, logoBox: found.logoBox || null };
+  if (item.cleaned) return { id: item.id, cleaned: CLEAN_VERSION, logoBox: item.logoBox || found.logoBox || null,
+    outlined: found.outlined.length ? found.outlined : item.outlined || [] };
   const had = item.hide || [], hide = [...new Set([...had, ...found.hide])];
-  const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: (item.outlined || []).length ? item.outlined : found.outlined, logoBox: found.logoBox || null };
+  const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: found.outlined.length ? found.outlined : item.outlined || [], logoBox: found.logoBox || null };
   if (hide.length !== had.length) out.background = await redrawBackground(item, hide);
   return out;
 }

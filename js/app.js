@@ -8,6 +8,7 @@ import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
 import { schoolKey, logoPicker } from "./logos.js";
+import { fontsToShare, shareFonts } from "./font-share.js";
 import { newId } from "./libitem.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
@@ -295,6 +296,7 @@ async function unlock() {
 // Everyone else only changes the crystals of the order they came from (Save for this order only).
 function setAdmin(on) {
   document.body.classList.toggle("admin", on);
+  if (on && S.library && S.library.length) checkFonts();
   $("adminBtn").textContent = on ? "🔓 Admin (lock)" : "🔒 Admin";
 }
 setAdmin(unlocked);
@@ -426,7 +428,39 @@ async function importFiles(files) {
     await show(S.row);  // column F picks the crystal: the new file may be the one this row needed
   }
   if (bad.length) toast(bad.join("  ·  "), "bad");
+  if (first) await offerFonts(S.library);
   return !bad.length;
+}
+
+// ------------------------------------------------------------------ the designs' fonts, for every computer
+// After an import: the fonts its words use are put online from this PC (see font-share.js). Chrome
+// only gives them right after a click: when that has passed, "Share fonts" waits for one.
+let fontsWaiting = [];
+async function offerFonts(items) {
+  try { fontsWaiting = await fontsToShare(items); } catch (e) { fontsWaiting = []; }
+  $("shareFontsBtn").hidden = !fontsWaiting.length;
+  $("shareFontsBtn").textContent = `Share fonts (${fontsWaiting.length})`;
+  if (fontsWaiting.length) await runShareFonts(true);
+}
+async function runShareFonts(quiet) {
+  if (!fontsWaiting.length) return;
+  try {
+    const { shared, notHere } = await shareFonts(fontsWaiting);
+    fontsWaiting = [];
+    $("shareFontsBtn").hidden = true;
+    toast((shared.length ? `Fonts shared for every computer: ${shared.join(", ")}.` : "The fonts are in the font list.") +
+      (notHere.length ? ` Not on this computer (listed by name only; install them, then import again): ${notHere.join(", ")}.` : ""));
+  } catch (e) {
+    if (!quiet || !/activation|gesture|denied|not allowed/i.test(e.message || "")) toast(e.message, "bad");
+    else toast(`This design uses ${fontsWaiting.length} font${fontsWaiting.length === 1 ? "" : "s"} not shared yet: click “Share fonts” at the top (Chrome asks to allow access to fonts: Allow).`);
+  }
+}
+$("shareFontsBtn").onclick = () => runShareFonts(false);
+// designs imported before: their fonts not shared yet show the button (admin), without asking
+async function checkFonts() {
+  try { fontsWaiting = await fontsToShare(S.library); } catch (e) { fontsWaiting = []; }
+  $("shareFontsBtn").hidden = !fontsWaiting.length;
+  $("shareFontsBtn").textContent = `Share fonts (${fontsWaiting.length})`;
 }
 
 $("importFile").addEventListener("change", async (e) => {
@@ -523,14 +557,15 @@ $("applyAll").onclick = async () => {
 
 // Save as default template: where this design's header, position and name sit (and how big)
 // becomes its layout for every row and for the order website's preview; their font, colour and
-// outline become the master look of every design. Rows changed by hand on this design start over.
+// outline become this design's look (other designs keep their own, from their .ai; only the font
+// is also offered to designs whose words were drawn as shapes). Rows changed by hand on this design start over.
 $("saveDefault").onclick = async () => {
   const it = itemOf(S.key);
   if (!it || it.source !== "pdf") return toast("Pick a crystal design (.ai) first.", "bad");
   const texts = editor.objects().filter((o) => editor.isText(o) && o.data && MASTER_FIELDS.includes(o.data.field));
   if (!texts.length) return toast("This crystal has no header, position or name text to save.", "bad");
-  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline become the master for every design.`)) return;
-  const layout = { ...(it.layout || {}) }, look = { ...getMaster() };
+  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline are kept for this design (other designs keep their own).`)) return;
+  const layout = { ...(it.layout || {}) }, look = { ...getMaster() }, mine = { ...(it.look || {}) };
   for (const o of texts) {
     const f = o.data.field, sy = o.scaleY || 1, size = Math.round(o.fontSize * sy * 100) / 100;
     let top = o.top, lines = String(o.text || "").split("\n").length;
@@ -549,13 +584,14 @@ $("saveDefault").onclick = async () => {
       fill: o.fill, stroke: o.stroke || null, strokeWidth: o.strokeWidth || 0, paintFirst: o.paintFirst || "fill",
       strokeLineJoin: o.strokeLineJoin || "miter", outerStroke: o.outerStroke || null, outerStrokeWidth: o.outerStrokeWidth || 0,
       charSpacing: o.charSpacing || 0, lineHeight: o.lineHeight || 1, scaleX: Math.round(((o.scaleX || 1) / sy) * 1000) / 1000 };
+    mine[f] = look[f];
   }
   try {
     // the school's logo, as placed here: where (and how big) every school's logo goes on this design
     const lg = editor.objects().find((o) => o.data && o.data.logo);
     const b = lg && lg.getBoundingRect(true, true);
     const logoBox = b ? { l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height } : undefined;
-    Object.assign(it, await store.saveLibrary({ id: it.id, layout, logoBox }));
+    Object.assign(it, await store.saveLibrary({ id: it.id, layout, logoBox, look: mine }));
     setMaster(await store.saveMaster(look));
   } catch (e) { return toast(e.message, "bad"); }
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
@@ -1076,6 +1112,7 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
   if (!(await store.hasLocal())) $("folderBtn").hidden = true;
   try { setMaster(await store.master()); } catch (e) {}
   try { S.library = await store.listLibrary(); } catch (e) { S.library = []; toast(e.message, "bad"); }
+  if (unlocked) checkFonts(); // fonts of designs imported before, not shared yet (admin)
   // designs imported before the logo clean-up: cleaned once now (and saved)
   // (and, for those cleaned before, where their logo was: the school's logo goes there)
   if (S.library.some((it) => it.source === "pdf" && it.original && (it.cleaned || 0) < CLEAN_VERSION)) {

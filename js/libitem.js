@@ -30,6 +30,8 @@ export function mergeItem(old, body, id, now = Date.now()) {
     cleaned: +pick("cleaned", 0) || 0, // autoClean (js/library.js) has been run on it
     // where its own logo was (pt, from its top-left): a school's logo goes there
     logoBox: box(pick("logoBox", null)),
+    // the look of its header / position / name as set on it (Save as default template)
+    look: pick("look", null) && typeof pick("look", null) === "object" && !Array.isArray(pick("look", null)) ? pick("look", null) : null,
     layout: pick("layout", null) && typeof pick("layout", null) === "object" ? pick("layout", null) : null,
     svg: typeof pick("svg", null) === "string" ? pick("svg", null) : undefined,
     background: old.background,
