@@ -1096,7 +1096,12 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
     S.logoFrom = { logo: opened.logo, school: opened.school };
     // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
-    if (opened.role === "teacher") { document.body.classList.add("teacher"); unlocked = false; setAdmin(false); }
+    if (opened.role === "teacher") {
+      document.body.classList.add("teacher");
+      unlocked = false;
+      setAdmin(false);
+      $("backToOrder").before($("saveOrder")); // the Excel panel is hidden: Save goes up top
+    }
     S.origKeys = S.rows.map(contentKey);
     $("srcHint").textContent = `${S.sourceName} · ${S.rows.length} row${S.rows.length === 1 ? "" : "s"} from the order website`;
   }
