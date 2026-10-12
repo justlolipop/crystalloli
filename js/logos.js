@@ -16,8 +16,10 @@ export function schoolKey(name) {
     [/ SJK C /g, " SJKC "], [/ SJK T /g, " SJKT "],
   ];
   for (const [re, to] of short) s = s.replace(re, to);
-  return s.replace(/\s+/g, " ").trim();
+  // short forms of words written either way: TMN = TAMAN, SRI = SERI …
+  return s.replace(/\s+/g, " ").trim().split(" ").map((w) => WORDS[w] || w).join(" ");
 }
+const WORDS = { TMN: "TAMAN", SRI: "SERI", KG: "KAMPUNG", KPG: "KAMPUNG", BDR: "BANDAR", JLN: "JALAN", BKT: "BUKIT", SG: "SUNGAI", SGI: "SUNGAI", PDG: "PADANG", LDG: "LADANG", BT: "BATU" };
 
 // the kept logo for a school, or null: the same name, else nearly (most of the words the same)
 export function logoFor(school, list) {
@@ -54,12 +56,14 @@ export async function toDataUrl(src) {
 
 // the kept logo whose school's name is written in these words (a crystal's header: "SK TAMAN SERI
 // PAGI ANUGERAH …"), or null: the longest name found, as whole words
+// (all its words there in any order count too, for a name of 3 words or more)
 export function logoInText(text, list) {
-  const t = " " + schoolKey(text) + " ";
+  const t = " " + schoolKey(text) + " ", have = new Set(t.trim().split(" "));
   let best = null;
   for (const x of Array.isArray(list) ? list : []) {
-    const k = schoolKey(x.name);
-    if (k.length < 5 || !t.includes(" " + k + " ")) continue;
+    const k = schoolKey(x.name), ws = k.split(" ");
+    if (k.length < 5) continue;
+    if (!t.includes(" " + k + " ") && !(ws.length >= 3 && ws.every((w) => have.has(w)))) continue;
     if (!best || k.length > best.k.length) best = { x, k };
   }
   return best ? best.x : null;
@@ -74,16 +78,21 @@ const keptPicture = (x) => {
 // For an order's crystals: row -> the logo (data URL) or null. The logo uploaded with the order,
 // else the kept one for the order's school, else the kept one whose school is named in the
 // crystal's own words (its header first).
+// pick.which(row): which logo that is, to say so — { how: "order" | "school" | "words", name } or null
 export function logoPicker({ logo, school }, list) {
   const own = toDataUrl(logo);
   const bySchool = logoFor(school, list);
-  return async (row) => {
+  const inWords = (r) => logoInText(r.event_header || "", list) ||
+    logoInText(Object.values(r).filter((v) => typeof v === "string").join(" \n "), list);
+  const pick = async (row) => {
     const o = await own;
     if (o) return o;
     if (bySchool) return keptPicture(bySchool);
-    const r = row || {};
-    const found = logoInText(r.event_header || "", list) ||
-      logoInText(Object.values(r).filter((v) => typeof v === "string").join(" \n "), list);
+    const found = inWords(row || {});
     return found ? keptPicture(found) : null;
   };
+  pick.which = (row) => (logo ? { how: "order", name: "uploaded with the order" } : bySchool ? { how: "school", name: bySchool.name }
+    : (() => { const f = inWords(row || {}); return f ? { how: "words", name: f.name } : null; })());
+  pick.count = Array.isArray(list) ? list.length : 0;
+  return pick;
 }

@@ -102,6 +102,14 @@ async function loadCustom() {
 let logos = [], logoFrom = { logo: null, school: null }, pickLogo = async () => null;
 const logoOn = async (it, row) => { const src = await pickLogo(row); return src ? { src, box: logoPlace(it) } : null; };
 
+// which school logo this crystal got, said next to it (or why it has none)
+function logoNote(row) {
+  if (!pickLogo.which) return "";
+  const w = pickLogo.which(row);
+  if (w) return " · logo: " + w.name;
+  return pickLogo.count ? " · no school logo found for this school (add it in Crystal Studio › School logos, named as on the crystal)" : " · no school logos in Crystal Studio yet";
+}
+
 // one crystal's picture: this order's own design if it has one, else the default.
 // svg: an Illustrator file instead (editable words, the artwork at print quality)
 async function picture(it, jenis, row, dpi, svg = false) {
@@ -364,7 +372,7 @@ async function draw() {
   document.getElementById("vNext").disabled = one;
   document.getElementById("vJenis").textContent = sl.g.jenis;
   document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "") +
-    (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" : "");
+    (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" : "") + (sl.t ? logoNote(sl.t.row) : "");
   document.getElementById("vEdit").hidden = !sl.it || !CAN_EDIT;
   document.getElementById("vCap").textContent = sl.t ? [sl.t.row.category, caption(sl.t.row)].filter(Boolean).join(" · ") : "";
   document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
