@@ -52,7 +52,9 @@ export function initEditor(hooks) {
     cornerSize: 10, cornerStyle: "circle", borderScaleFactor: 1.5, padding: 2,
   });
   cv = new fabric.Canvas("c", {
-    preserveObjectStacking: true, backgroundColor: "", stopContextMenu: true,
+    // skipOffscreen off: with the view flipped (Flip to read) Fabric works out the visible area
+    // backwards and skipped drawing whatever wasn't across the middle — the header and the name
+    preserveObjectStacking: true, backgroundColor: "", stopContextMenu: true, skipOffscreen: false,
     selectionColor: "rgba(11,110,114,0.08)", selectionBorderColor: "#0b6e72", selectionLineWidth: 1,
   });
   cv.on("selection:created", syncToolbar);
