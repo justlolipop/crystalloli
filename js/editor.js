@@ -94,7 +94,9 @@ function strip(json) {
   o.objects = (o.objects || []).filter((x) => !(x.data && (x.data.role === "bg" || x.data.role === "art")));
   return JSON.stringify(o);
 }
-export const currentState = (json) => ({ w: ed.W, h: ed.H, json: strip(json || snapshot()) });
+// logoSeen: made while the school's logo was offered (see setLogo): it's in there, or it was
+// taken out on purpose — either way it isn't added again
+export const currentState = (json) => ({ w: ed.W, h: ed.H, json: strip(json || snapshot()), ...(ed.logoSrc ? { logoSeen: true } : {}) });
 
 function changed() {
   if (ed.quiet) return;
@@ -168,6 +170,23 @@ export function makeText(t) {
     },
   });
 }
+
+// The school's logo (from the order website), put where the design's own logo was: an ordinary
+// picture, to move, resize or delete. logo = { src (data URL), box: { l, t, r, b } in pt }.
+// Not added twice, nor into a design saved while it was offered (logoSeen).
+async function addLogo(canvas, logo, state) {
+  if (!logo || !logo.src || !logo.box || (state && state.logoSeen)) return;
+  if (canvas.getObjects().some((o) => o.data && o.data.logo)) return;
+  const img = await loadImage(logo.src);
+  if (!img) return;
+  const b = logo.box, k = Math.min((b.r - b.l) / img.width, (b.b - b.t) / img.height);
+  img.set({ left: (b.l + b.r) / 2, top: (b.t + b.b) / 2, originX: "center", originY: "center", scaleX: k, scaleY: k, data: { role: "image", logo: true } });
+  canvas.insertAt(img, canvas.getObjects().filter(isTemplateImage).length, false);
+}
+// the school's logo for the designs shown here (data URL), or null; where it goes on each design
+// comes from hooks.logoBox()
+export function setLogo(src) { ed.logoSrc = src || null; }
+const logoNow = () => (ed.logoSrc && ed.hooks.logoBox ? { src: ed.logoSrc, box: ed.hooks.logoBox() } : null);
 
 // template pictures go at the very bottom, locked
 async function insertImages(canvas, images, alive = () => true) {
@@ -282,6 +301,8 @@ export async function build(scene) {
     setDoc(scene.width, scene.height);
     const ok = await addSceneTo(cv, scene, () => token === ed.token);
     if (!ok || token !== ed.token) return false;
+    await addLogo(cv, logoNow());
+    if (token !== ed.token) return false;
     cv.renderAll();
   } finally {
     ed.quiet--;
@@ -305,6 +326,8 @@ export async function loadState(state, images) {
     if (token !== ed.token) return false;
     patchFonts(cv);
     if (!(await insertImages(cv, images, () => token === ed.token))) return false;
+    await addLogo(cv, logoNow(), state);
+    if (token !== ed.token) return false;
     cv.renderAll();
   } finally {
     ed.quiet--;
@@ -339,6 +362,7 @@ async function offscreen(entry) {
   } else {
     await addSceneTo(sc, entry.scene);
   }
+  await addLogo(sc, entry.logo, entry.state); // entry.logo: { src, box }, see addLogo
   return { sc, w, h };
 }
 

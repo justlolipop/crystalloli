@@ -9,7 +9,8 @@
 import { esc } from "./util.js";
 import { setFontList, setFontFiles } from "./fonts.js";
 import { store, onLibraryChanged } from "./store.js";
-import { libraryScene, setMaster, autoCleanAll, hiResBackground } from "./library.js";
+import { libraryScene, setMaster, autoCleanAll, hiResBackground, logoPlace } from "./library.js";
+import { orderLogo } from "./logos.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
@@ -96,6 +97,10 @@ async function loadCustom() {
   if (!order) return;
   try { const d = await store.loadDesign(orderDesignId(order)); custom = (d && d.data && d.data.custom) || {}; } catch (e) { /* none yet */ }
 }
+// the school's logo (data URL, see logos.js) where this design's own logo was, or null
+let logo = null, logoFrom = { logo: null, school: null };
+const logoOn = (it) => (logo ? { src: logo, box: logoPlace(it) } : null);
+
 // one crystal's picture: this order's own design if it has one, else the default.
 // svg: an Illustrator file instead (editable words, the artwork at print quality)
 async function picture(it, jenis, row, dpi, svg = false) {
@@ -105,7 +110,7 @@ async function picture(it, jenis, row, dpi, svg = false) {
     if (hi) scene.images = scene.images.map((im) => (im.role === "bg" ? { ...im, src: hi } : im));
   }
   const own = custom[rowKey(jenis, row)];
-  const entry = own ? { state: own, images: scene.images } : { scene };
+  const entry = own ? { state: own, images: scene.images, logo: logoOn(it) } : { scene, logo: logoOn(it) };
   return svg ? svgOffscreen(entry) : (await renderOffscreen(entry, dpi)).url;
 }
 const short = (jenis) => jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, "");
@@ -232,7 +237,7 @@ async function generateAll(ai) {
       const list = [];
       for (const f of files) {
         const scene = await libraryScene(f.c.it, f.c.t.row, columns), own = custom[rowKey(f.c.g.jenis, f.c.t.row)];
-        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images } : { scene }, name: f.name });
+        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: logoOn(f.c.it) } : { scene, logo: logoOn(f.c.it) }, name: f.name });
       }
       const { job, without } = await vectorJob(list);
       const svgs = [];
@@ -329,7 +334,9 @@ function showTab(g) {
     e.preventDefault();
     if (!CAN_EDIT) return;
     const g = slides[at].g;
-    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, rows: g.tiles.map((t) => t.row) })), "_blank");
+    // the logo: its web address (a picture pasted into the order itself only when it's small)
+    const lg = typeof logoFrom.logo === "string" && (/^https?:/.test(logoFrom.logo) || logoFrom.logo.length < 300000) ? logoFrom.logo : null;
+    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, logo: lg, school: logoFrom.school, rows: g.tiles.map((t) => t.row) })), "_blank");
   };
   draw();
 }
@@ -391,10 +398,12 @@ async function reloadLibrary() {
   reloading = true;
   try {
     const was = JSON.stringify(custom);
-    const [lib, m] = await Promise.all([store.listLibrary(), store.master(), loadCustom()]);
-    const same = JSON.stringify(lib) === JSON.stringify(library) && JSON.stringify(m) === JSON.stringify(lastMaster) && JSON.stringify(custom) === was;
+    const [lib, m, lg] = await Promise.all([store.listLibrary(), store.master(),
+      store.logos().then((list) => orderLogo(logoFrom, list)).catch(() => logo), loadCustom()]);
+    const same = JSON.stringify(lib) === JSON.stringify(library) && JSON.stringify(m) === JSON.stringify(lastMaster) && JSON.stringify(custom) === was && lg === logo;
     if (!same) {
       library = lib;
+      logo = lg;
       lastMaster = m;
       setMaster(m);
       pics.clear();
@@ -415,11 +424,16 @@ window.addEventListener("message", (e) => {
   if (e.data.type === "crystal-rows") {
     const rows = Array.isArray(e.data.rows) ? e.data.rows : [];
     const o = typeof e.data.order === "string" || typeof e.data.order === "number" ? String(e.data.order) : null;
-    if (o !== order) {
+    // the school's logo: uploaded with the order (logo), else the kept one for its school
+    const from = { logo: typeof e.data.logo === "string" ? e.data.logo : null, school: typeof e.data.school === "string" ? e.data.school : null };
+    const newLogo = from.logo !== logoFrom.logo || from.school !== logoFrom.school;
+    if (o !== order || newLogo) {
       order = o;
+      logoFrom = from;
       pics.clear();
       smalls.clear();
-      loadCustom().then(() => show(rows));
+      Promise.all([loadCustom(), store.logos().then((list) => orderLogo(from, list)).catch(() => null).then((d) => { logo = d; })])
+        .then(() => show(rows));
     } else show(rows);
   }
   // the website picked a Jenis Plak (a row of its price table clicked): show that design's tab

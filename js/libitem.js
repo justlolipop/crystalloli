@@ -7,6 +7,8 @@ export const newId = () => Date.now().toString(36) + "-" + Math.random().toStrin
 
 // old: the design as kept (or {}), body: what was sent -> the design to keep (background: kept as
 // it was; the caller stores a new picture itself)
+const box = (b) => (b && ["l", "t", "r", "b"].every((k) => Number.isFinite(+b[k])) ? { l: +b.l, t: +b.t, r: +b.r, b: +b.b } : null);
+
 export function mergeItem(old, body, id, now = Date.now()) {
   const pick = (k, fallback) => (body[k] !== undefined ? body[k] : old[k] !== undefined ? old[k] : fallback);
   return {
@@ -26,6 +28,8 @@ export function mergeItem(old, body, id, now = Date.now()) {
     hide: Array.isArray(pick("hide", [])) ? pick("hide", []).map(Number).filter(Number.isInteger) : [],
     outlined: Array.isArray(pick("outlined", [])) ? pick("outlined", []) : [],
     cleaned: +pick("cleaned", 0) || 0, // autoClean (js/library.js) has been run on it
+    // where its own logo was (pt, from its top-left): a school's logo goes there
+    logoBox: box(pick("logoBox", null)),
     layout: pick("layout", null) && typeof pick("layout", null) === "object" ? pick("layout", null) : null,
     svg: typeof pick("svg", null) === "string" ? pick("svg", null) : undefined,
     background: old.background,
