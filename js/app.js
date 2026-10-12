@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
 import { schoolKey, logoPicker } from "./logos.js";
 import { newId } from "./libitem.js";
 import { illustratorScript } from "./illustrator.js";
@@ -122,6 +122,7 @@ async function show(r, key) {
   const scene = await sceneFor(key, S.row);
   if (token !== showToken || !scene) return;
   editor.setLogo(await pickLogo(S.rows[S.row])); // this crystal's school logo, see logos.js
+  editor.setMirrored(isMirrored(it)); // printed from the back: "Flip to read" shows it the right way round
   if (token !== showToken) return;
   const saved = S.edits[S.row + "|" + key];
   const ok = saved ? await editor.loadState(saved, scene.images) : await editor.build(scene);

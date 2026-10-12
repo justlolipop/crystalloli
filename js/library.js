@@ -270,12 +270,19 @@ function logoAndWords(plan, r) {
 
 // where a school's logo goes on this design (pt, from its top-left): where its own logo was; a
 // design whose logo wasn't found gets it in the top middle; null: none on this design
+// (flip: the design is mirrored — printed from the back — so the logo is mirrored too)
 export function logoPlace(item) {
   if (!item || item.source === "svg") return null; // an .svg design keeps its own logo
-  const b = item.logoBox;
-  if (b && b.r > b.l && b.b > b.t) return b;
+  const b = item.logoBox, flip = isMirrored(item);
+  if (b && b.r > b.l && b.b > b.t) return { l: b.l, t: b.t, r: b.r, b: b.b, flip };
   const W = (item && item.width) || 300, H = (item && item.height) || 400, s = Math.min(W * 0.24, H * 0.18);
-  return { l: W / 2 - s / 2, t: H * 0.07, r: W / 2 + s / 2, b: H * 0.07 + s };
+  return { l: W / 2 - s / 2, t: H * 0.07, r: W / 2 + s / 2, b: H * 0.07 + s, flip };
+}
+
+// a design printed from the back of the crystal: drawn mirrored (its words read backwards)
+export function isMirrored(item) {
+  if (!item) return false;
+  return (item.texts || []).some((t) => t.flipX) || Object.values(item.layout || {}).some((l) => l && l.flipX);
 }
 
 // The artwork without its live text. Text with an outline or shadow made in Illustrator usually

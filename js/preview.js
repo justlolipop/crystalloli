@@ -9,7 +9,7 @@
 import { esc } from "./util.js";
 import { setFontList, setFontFiles } from "./fonts.js";
 import { store, onLibraryChanged } from "./store.js";
-import { libraryScene, setMaster, autoCleanAll, hiResBackground, logoPlace } from "./library.js";
+import { libraryScene, setMaster, autoCleanAll, hiResBackground, logoPlace, isMirrored } from "./library.js";
 import { logoPicker } from "./logos.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
@@ -102,6 +102,11 @@ async function loadCustom() {
 let logos = [], logoFrom = { logo: null, school: null }, pickLogo = async () => null;
 const logoOn = async (it, row) => { const src = await pickLogo(row); return src ? { src, box: logoPlace(it) } : null; };
 
+// a crystal printed from the back: its design is mirrored. Shown the right way round to read
+// (readFlip, "Flip to read", on unless unticked); the print files stay mirrored.
+let readFlip = true;
+const mirrored = (it) => isMirrored(it);
+
 // which school logo this crystal got, said next to it (or why it has none)
 function logoNote(row) {
   if (!pickLogo.which) return "";
@@ -145,7 +150,7 @@ async function showAll(groups) {
     </div>
     <div class="grid" id="aGrid" style="--th:${Math.round(THUMB_H * allZoom)}px">${cells.map((c, n) => `
     <button type="button" class="cell${c.it ? "" : " missing"}" data-n="${n}" title="${c.it ? "See it alone" : "No Crystal Studio design for this yet"}">
-      <span class="thumb">${c.it && smalls.get(rowKey(c.g.jenis, c.t.row)) ? `<img alt="" src="${smalls.get(rowKey(c.g.jenis, c.t.row))}">` : c.it ? "…" : "Not imported yet"}</span>
+      <span class="thumb">${c.it && smalls.get(rowKey(c.g.jenis, c.t.row)) ? `<img alt="" src="${smalls.get(rowKey(c.g.jenis, c.t.row))}"${readFlip && mirrored(c.it) ? ' style="transform:scaleX(-1)"' : ""}>` : c.it ? "…" : "Not imported yet"}</span>
       <span class="clabel"><b>${esc(short(c.g.jenis))}</b>${c.t ? ` ×${c.t.qty}` : ""}${c.t && custom[rowKey(c.g.jenis, c.t.row)] ? ' <span class="own" title="Changed for this order only">✎ this order</span>' : ""}</span>
       <span class="clabel">${c.t ? esc(caption(c.t.row)) : ""}</span>
     </button>`).join("")}</div>`;
@@ -179,7 +184,7 @@ async function showAll(groups) {
     } catch (e) { smalls.set(key, null); }
     if (my !== job) return; // another tab was picked meanwhile
     const el = out.querySelector(`.cell[data-n="${n}"] .thumb`);
-    if (el) el.innerHTML = smalls.get(key) ? `<img alt="" src="${smalls.get(key)}">` : "Couldn't draw this one";
+    if (el) el.innerHTML = smalls.get(key) ? `<img alt="" src="${smalls.get(key)}"${readFlip && mirrored(c.it) ? ' style="transform:scaleX(-1)"' : ""}>` : "Couldn't draw this one";
   }
   sendHeight();
 }
@@ -319,7 +324,7 @@ function showTab(g) {
     <div class="vfoot">
       <span id="vCap" class="cap"></span>
       <span class="zoom"><button type="button" id="vOut" aria-label="Zoom out">−</button><span id="vZoom">100%</span><button type="button" id="vIn" aria-label="Zoom in">＋</button></span>
-      <label id="vFlipWrap"><input type="checkbox" id="flip"> Flip to read</label>
+      <label id="vFlipWrap" title="This crystal is printed from the back, so its design is mirrored. Ticked: shown the right way round, to read (the print files stay mirrored)"><input type="checkbox" id="flip"${readFlip ? " checked" : ""}> Flip to read</label>
     </div>`;
   // ‹ › go through this design's crystals, then on to the next design's (the tabs, in order)
   const go = (d) => {
@@ -336,7 +341,7 @@ function showTab(g) {
   document.getElementById("vNext").onclick = () => go(1);
   document.getElementById("vIn").onclick = () => setZoom(1);
   document.getElementById("vOut").onclick = () => setZoom(-1);
-  document.getElementById("flip").onchange = () => draw();
+  document.getElementById("flip").onchange = (e) => { readFlip = e.target.checked; draw(); };
   out.onclick = null;
   document.getElementById("vStage").onclick = (e) => { if (e.target.tagName === "IMG") setZoom(zoom >= ZOOMS[ZOOMS.length - 1] ? -9 : 1); };
   // ✎ Edit: Crystal Studio opens in a new tab with this design's rows, carried in the link itself
@@ -377,7 +382,7 @@ async function draw() {
   document.getElementById("vCap").textContent = sl.t ? [sl.t.row.category, caption(sl.t.row)].filter(Boolean).join(" · ") : "";
   document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
   const stage = document.getElementById("vStage");
-  const flipped = !!sl.it && (sl.it.texts || []).some((t) => t.flipX);
+  const flipped = mirrored(sl.it);
   document.getElementById("vFlipWrap").hidden = !flipped;
   if (!sl.it) {
     stage.innerHTML = `<p class="msg warn">No Crystal Studio design for this yet — import its .ai in Crystal Studio.</p>`;

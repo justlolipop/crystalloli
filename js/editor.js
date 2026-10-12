@@ -180,7 +180,7 @@ async function addLogo(canvas, logo, state) {
   const img = await loadImage(logo.src);
   if (!img) return;
   const b = logo.box, k = Math.min((b.r - b.l) / img.width, (b.b - b.t) / img.height);
-  img.set({ left: (b.l + b.r) / 2, top: (b.t + b.b) / 2, originX: "center", originY: "center", scaleX: k, scaleY: k, data: { role: "image", logo: true } });
+  img.set({ left: (b.l + b.r) / 2, top: (b.t + b.b) / 2, originX: "center", originY: "center", scaleX: k, scaleY: k, flipX: !!b.flip, data: { role: "image", logo: true } });
   canvas.insertAt(img, canvas.getObjects().filter(isTemplateImage).length, false);
 }
 // the school's logo for the designs shown here (data URL), or null; where it goes on each design
@@ -424,8 +424,11 @@ export async function imagesOf(entry) {
 export function exportImage(dpi = 300, format = "png") {
   cv.discardActiveObject();
   ed.guides = [];
+  const flipped = viewFlipped();
+  if (flipped) cv.setViewportTransform(viewFor(ed.zoom, false)); // as it prints: mirrored
   cv.renderAll();
   const url = cv.toDataURL({ format, quality: 0.92, multiplier: dpi / 72 / ed.zoom });
+  if (flipped) { cv.setViewportTransform(viewFor(ed.zoom, true)); cv.renderAll(); }
   syncToolbar();
   return url;
 }
@@ -515,9 +518,19 @@ export function fitZoom() {
   applyZoom(Math.max(0.05, Math.min(z, 12)));
 }
 
+// a mirrored design (printed from the back) can be shown the right way round: only the view is
+// flipped (see setMirrored); the design itself, downloads and Illustrator stay as they are
+const viewFor = (z, flip) => (flip ? [-z, 0, 0, z, ed.W * z, 0] : [z, 0, 0, z, 0, 0]);
+const viewFlipped = () => !!(ed.mirrored && ed.readFlip);
+export function setMirrored(on) {
+  ed.mirrored = !!on;
+  $("readFlipWrap").hidden = !on;
+  if (cv) applyZoom(ed.zoom);
+}
+
 function applyZoom(z) {
   ed.zoom = z;
-  cv.setZoom(z);
+  cv.setViewportTransform(viewFor(z, viewFlipped()));
   cv.setDimensions({ width: Math.max(1, Math.round(ed.W * z)), height: Math.max(1, Math.round(ed.H * z)) });
   $("zoomFit").textContent = Math.round(z * 100 * 72 / 96) + "%";
   cv.calcOffset();
@@ -758,6 +771,8 @@ function wireToolbar() {
   $("zoomIn").onclick = () => zoomBy(1.25);
   $("zoomOut").onclick = () => zoomBy(1 / 1.25);
   $("zoomFit").onclick = fitZoom;
+  ed.readFlip = true;
+  $("readFlip").onchange = (e) => { ed.readFlip = e.target.checked; applyZoom(ed.zoom); };
   $("stageWrap").addEventListener("wheel", (e) => {
     if (!e.ctrlKey) return;
     e.preventDefault();
