@@ -4,7 +4,21 @@
 // list by name: it then works on the computers that have it.
 
 import { store } from "./store.js";
-import { setFontList, setFontFiles } from "./fonts.js";
+import { setFontList, setFontFiles, drawsLetters } from "./fonts.js";
+
+// a font file that loads and really draws letters (fonts synced by Adobe and some others come out
+// empty or locked: those are never put online)
+async function usable(blob, ps) {
+  const name = "chk_" + String(ps).replace(/[^A-Za-z0-9]/g, "_");
+  try {
+    const face = new FontFace(name, await blob.arrayBuffer());
+    await face.load();
+    document.fonts.add(face);
+    const ok = drawsLetters(name);
+    document.fonts.delete(face);
+    return ok;
+  } catch (e) { return false; }
+}
 
 // "Teko-Bold" -> ["Teko", "Bold"]: a font not on this PC, named from its PostScript name
 function guessName(ps) {
@@ -36,6 +50,7 @@ export async function shareFonts(need) {
     rows.push([ps, fd.family, fd.style]);
     if (files[ps]) continue;
     const blob = await fd.blob();
+    if (!(await usable(blob, ps))) { notHere.push(ps); continue; }
     const head = String.fromCharCode(...new Uint8Array(await blob.slice(0, 4).arrayBuffer()));
     const ext = head === "OTTO" ? "otf" : "ttf";
     uploads.push({ file: `fonts/${ps}.${ext}`, blob, type: "font/" + ext });
