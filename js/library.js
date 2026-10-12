@@ -255,10 +255,27 @@ function logoAndWords(plan, r) {
   // old words drawn as shapes; small "text" pieces are usually bits of a picture, not words
   const words = els.filter((e) => e.kind === "text" && !drop.has(e) && w(e) >= r.w * 0.2);
   for (const e of words) drop.add(e);
+  // where the logo was (pt, design): the school's own logo goes there (see logoPlace)
+  const marks = [logo, pic].filter(Boolean);
+  const logoBox = marks.length ? {
+    l: Math.min(...marks.map((e) => e.x0)) - r.x, t: Math.min(...marks.map((e) => e.y0)) - r.y,
+    r: Math.max(...marks.map((e) => e.x1)) - r.x, b: Math.max(...marks.map((e) => e.y1)) - r.y,
+  } : null;
   return {
     hide: [...[...drop].flatMap((e) => e.ops), ...extraOps],
     outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y })),
+    logoBox,
   };
+}
+
+// where a school's logo goes on this design (pt, from its top-left): where its own logo was; a
+// design whose logo wasn't found gets it in the top middle; null: none on this design
+export function logoPlace(item) {
+  if (!item || item.source === "svg") return null; // an .svg design keeps its own logo
+  const b = item.logoBox;
+  if (b && b.r > b.l && b.b > b.t) return b;
+  const W = (item && item.width) || 300, H = (item && item.height) || 400, s = Math.min(W * 0.24, H * 0.18);
+  return { l: W / 2 - s / 2, t: H * 0.07, r: W / 2 + s / 2, b: H * 0.07 + s };
 }
 
 // The artwork without its live text. Text with an outline or shadow made in Illustrator usually
@@ -436,7 +453,7 @@ async function importPdf(file, progress) {
         file: file.name, page: n, order: out.length, source: "pdf", width: r.w, height: r.h, region: [r.x, r.y, r.w, r.h], original,
         background: regions.length ? crop(bare.canvas, r, S) : bare.canvas.toDataURL("image/png"),
         texts: blocks.filter((b) => !regions.length || inside(b, r)).map((b) => finishText(b, r)),
-        hide: cleared[i].hide, outlined: cleared[i].outlined, cleaned: CLEAN_VERSION,
+        hide: cleared[i].hide, outlined: cleared[i].outlined, logoBox: cleared[i].logoBox || null, cleaned: CLEAN_VERSION,
       });
     });
     bare.canvas.width = bare.canvas.height = 0;
@@ -786,15 +803,19 @@ export async function pieceAt(item, x, y) {
 // a picture) still have it: they get the same clean-up once, without importing them again. What was
 // removed by hand stays removed; "Put back" afterwards isn't undone (cleaned marks it as done).
 // -> the changes to save ({ id, cleaned, hide, outlined, background? }), or null when already done
-export const CLEAN_VERSION = 1;
+// 2: also where the logo was (logoBox)
+export const CLEAN_VERSION = 2;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
   const plan = pagePlan(page);
   const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
   const found = plan ? logoAndWords(plan, { x, y, w, h }) : { hide: [], outlined: [] };
+  // cleaned before: only where its logo was is new (what's left out stays as it is — a logo put
+  // back by hand stays back)
+  if (item.cleaned) return { id: item.id, cleaned: CLEAN_VERSION, logoBox: found.logoBox || null };
   const had = item.hide || [], hide = [...new Set([...had, ...found.hide])];
-  const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: (item.outlined || []).length ? item.outlined : found.outlined };
+  const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: (item.outlined || []).length ? item.outlined : found.outlined, logoBox: found.logoBox || null };
   if (hide.length !== had.length) out.background = await redrawBackground(item, hide);
   return out;
 }
@@ -867,4 +888,131 @@ export function hiResBackground(item, dpi) {
     })());
   }
   return hiCache.get(key);
+}
+// ------------------------------------------------------------------ school logos from an .ai
+
+// An .ai (saved PDF-compatible) with many school logos, each with its school's name written near
+// it (under it, else above): every logo cut out as a picture, named from those words when they're
+// live text. -> [{ data: png data URL, name }] in reading order. Pieces of one logo a little apart
+// (a crest and its ring) stay one logo; a white box behind them all is ignored.
+export async function extractLogos(file, progress) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
+  const bytes = new Uint8Array(await file.arrayBuffer());
+  if (String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") {
+    throw new Error("It wasn't saved with “Create PDF Compatible File”. Tick that in Illustrator's save options and try again.");
+  }
+  const doc = await pdfjsLib.getDocument({ data: bytes, fontExtraProperties: true, canvasFactory: new CanvasFactory() }).promise;
+  const out = [];
+  for (let n = 1; n <= doc.numPages; n++) {
+    progress && progress(`Finding the logos${doc.numPages > 1 ? ` — artboard ${n} of ${doc.numPages}` : ""}…`);
+    const page = await doc.getPage(n);
+    const vp1 = page.getViewport({ scale: 1 });
+    const S = Math.max(1, Math.min(4, 3200 / Math.max(vp1.width, vp1.height)));
+    const vp = page.getViewport({ scale: S });
+    const W = Math.round(vp.width), H = Math.round(vp.height);
+    const items = await visibleTextItems(doc, page, await page.getTextContent({ includeMarkedContent: true }));
+    // the logos are found without the live words (so a name under a logo isn't part of it), and
+    // cut out of the page as drawn (words inside a logo stay in it)
+    const full = makeCanvas(W, H), bare = makeCanvas(W, H);
+    await page.render({ canvasContext: full.ctx, viewport: vp, background: CLEAR }).promise;
+    await drawBare(page, items, bare, vp, []);
+    const boxes = logoBlobs(bare.ctx.getImageData(0, 0, W, H).data, W, H);
+    bare.canvas.width = bare.canvas.height = 0;
+    // the live words, as boxes in px on this page
+    const words = items.filter((it) => it.str && it.str.trim()).map((it) => {
+      const [x, y] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
+      const h = Math.abs(it.transform[3] || it.height || 8) * S, w = (it.width || 0) * S;
+      return { str: it.str.trim(), l: x, r: x + w, t: y - h, b: y, cx: x + w / 2, cy: y - h / 2 };
+    });
+    // each word to the logo it's the name of: just under it (else just above), across its width
+    const named = boxes.map(() => []);
+    for (const wd of words) {
+      let best = null;
+      boxes.forEach((b, i) => {
+        const bw = b.r - b.l, bh = b.b - b.t;
+        if (wd.cx < b.l - bw * 0.4 || wd.cx > b.r + bw * 0.4) return;
+        if (wd.cy > b.t && wd.cy < b.b && wd.cx > b.l && wd.cx < b.r) return; // inside the logo
+        const d = wd.t >= b.b - bh * 0.05 ? wd.t - b.b : wd.b <= b.t + bh * 0.05 ? (b.t - wd.b) * 1.5 : null;
+        if (d === null || d > Math.max(bh * 0.9, 40 * S)) return;
+        if (!best || d < best.d) best = { i, d };
+      });
+      if (best) named[best.i].push(wd);
+    }
+    boxes.forEach((b, i) => {
+      const pad = Math.round(Math.max(b.r - b.l, b.b - b.t) * 0.03);
+      const x = Math.max(0, b.l - pad), y = Math.max(0, b.t - pad), w = Math.min(W, b.r + pad) - x, h = Math.min(H, b.b + pad) - y;
+      const k = Math.min(1, 800 / Math.max(w, h));
+      const c = makeCanvas(Math.max(1, Math.round(w * k)), Math.max(1, Math.round(h * k)));
+      c.ctx.drawImage(full.canvas, x, y, w, h, 0, 0, c.canvas.width, c.canvas.height);
+      // the words in reading order: line by line (close tops), left to right
+      const ws = named[i].sort((a, b2) => (Math.abs(a.t - b2.t) < (a.b - a.t) * 0.5 ? a.l - b2.l : a.t - b2.t));
+      const name = ws.map((wd) => wd.str).join(" ").replace(/\s+/g, " ").trim();
+      out.push({ data: c.canvas.toDataURL("image/png"), name, page: n, y: b.t, x: b.l });
+      c.canvas.width = c.canvas.height = 0;
+    });
+    full.canvas.width = full.canvas.height = 0;
+  }
+  return out.map(({ data, name }) => ({ data, name }));
+}
+
+// the separate pictures drawn on a page (px): ink (not white, not see-through) joined up when a
+// few px apart; boxes that overlap become one; specks and a box over nearly the whole page go
+function logoBlobs(data, W, H) {
+  const g = Math.max(2, Math.ceil(Math.max(W, H) / 700));
+  const gw = Math.ceil(W / g), gh = Math.ceil(H / g);
+  const ink = new Uint8Array(gw * gh);
+  for (let y = 0; y < H; y++) {
+    const row = ((y / g) | 0) * gw, base = y * W * 4;
+    for (let x = 0; x < W; x++) {
+      const i = base + x * 4;
+      if (data[i + 3] > 24 && !(data[i] > 240 && data[i + 1] > 240 && data[i + 2] > 240)) ink[row + ((x / g) | 0)] = 1;
+    }
+  }
+  // grown by 2 cells, so pieces a little apart are one
+  const grown = new Uint8Array(gw * gh), R = 2;
+  for (let y = 0; y < gh; y++) for (let x = 0; x < gw; x++) {
+    if (!ink[y * gw + x]) continue;
+    for (let dy = -R; dy <= R; dy++) for (let dx = -R; dx <= R; dx++) {
+      const yy = y + dy, xx = x + dx;
+      if (yy >= 0 && yy < gh && xx >= 0 && xx < gw) grown[yy * gw + xx] = 1;
+    }
+  }
+  const seen = new Uint8Array(gw * gh);
+  let boxes = [];
+  for (let i = 0; i < gw * gh; i++) {
+    if (!grown[i] || seen[i]) continue;
+    const st = [i];
+    seen[i] = 1;
+    let l = gw, t = gh, r = -1, b = -1;
+    while (st.length) {
+      const j = st.pop(), x = j % gw, y = (j / gw) | 0;
+      if (ink[j]) { if (x < l) l = x; if (x > r) r = x; if (y < t) t = y; if (y > b) b = y; }
+      for (const k of [j - 1, j + 1, j - gw, j + gw]) {
+        if (k < 0 || k >= gw * gh || seen[k] || !grown[k]) continue;
+        if ((k === j - 1 && x === 0) || (k === j + 1 && x === gw - 1)) continue;
+        seen[k] = 1;
+        st.push(k);
+      }
+    }
+    if (r >= 0) boxes.push({ l: l * g, t: t * g, r: Math.min(W, (r + 1) * g), b: Math.min(H, (b + 1) * g) });
+  }
+  // a piece inside / over another one (a crest inside its ring, a badge behind it): one logo
+  for (let merged = true; merged;) {
+    merged = false;
+    for (let i = 0; i < boxes.length && !merged; i++) for (let j = i + 1; j < boxes.length && !merged; j++) {
+      const a = boxes[i], c = boxes[j];
+      if (a.l < c.r && c.l < a.r && a.t < c.b && c.t < a.b) {
+        boxes[i] = { l: Math.min(a.l, c.l), t: Math.min(a.t, c.t), r: Math.max(a.r, c.r), b: Math.max(a.b, c.b) };
+        boxes.splice(j, 1);
+        merged = true;
+      }
+    }
+  }
+  const min = Math.max(W, H) * 0.02;
+  // (a long thin one is words drawn as shapes — a school's name — not a logo)
+  boxes = boxes.filter((b) => b.r - b.l >= min && b.b - b.t >= min && (b.r - b.l) * (b.b - b.t) < W * H * 0.7 &&
+    (b.r - b.l) / (b.b - b.t) < 3.5 && (b.b - b.t) / (b.r - b.l) < 3.5);
+  // reading order: by rows (tops within half a logo), then left to right
+  const avg = boxes.reduce((s, b) => s + (b.b - b.t), 0) / (boxes.length || 1);
+  return boxes.sort((a, b) => (Math.abs(a.t - b.t) < avg * 0.5 ? a.l - b.l : a.t - b.t));
 }

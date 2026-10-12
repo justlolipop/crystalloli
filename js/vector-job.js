@@ -19,7 +19,7 @@ export async function vectorJob(list) {
   for (const [i, x] of list.entries()) {
     const it = x.item;
     if (!it || it.source !== "pdf" || !it.original) { without.push(i); continue; }
-    const bare = x.entry.state ? { state: x.entry.state, images: [] } : { scene: { ...x.entry.scene, images: [] } };
+    const bare = x.entry.state ? { state: x.entry.state, images: [], logo: x.entry.logo } : { scene: { ...x.entry.scene, images: [] }, logo: x.entry.logo };
     const texts = (await textsOf(bare)).filter((t) => String(t.text).trim()).map((t) => ({
       now: { ...t, fill: hex(t.fill), stroke: hex(t.stroke), outer: hex(t.outer) },
     }));

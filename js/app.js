@@ -6,10 +6,12 @@
 import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos } from "./library.js";
+import { schoolKey, orderLogo } from "./logos.js";
+import { newId } from "./libitem.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
-import { store } from "./store.js";
+import { store, fileUrl } from "./store.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
 import { vectorJob } from "./vector-job.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
@@ -44,7 +46,11 @@ const S = {
 };
 const row = () => S.rows[S.row] || {};
 const itemOf = (key) => (key ? S.library.find((x) => "lib|" + x.id === key) : null);
-const columnsForUi = () => S.columns.map((c) => ({ key: c.key, label: c.label }));
+// columns that are never words on a crystal (which design, the order's sorting): not offered for
+// linking a text, nor as Excel chips — still read and kept
+const NOT_WORDS = new Set(["qty", "jenis_plak", "category", "line_order", "position_black"]);
+const wordCols = () => S.columns.filter((c) => !NOT_WORDS.has(c.key));
+const columnsForUi = () => wordCols().map((c) => ({ key: c.key, label: c.label }));
 
 // ------------------------------------------------------------------ the Excel table
 // Only columns A–F are shown; the rest (category, line_order, …) are still read and kept.
@@ -135,7 +141,7 @@ function renderAll() {
 
 function renderElements() {
   const rw = row();
-  $("chips").innerHTML = S.columns.filter((c) => c.key !== "qty").map((c) => {
+  $("chips").innerHTML = wordCols().map((c) => {
     const v = String(rw[c.key] ?? "");
     const on = !!editor.findField(c.key);
     const cls = ["chip", on ? "on" : v ? "off" : "empty", selectedFields.includes(c.key) ? "sel" : ""].join(" ");
@@ -151,7 +157,7 @@ function renderElements() {
       `<small>${col ? "Excel: " + esc(col.label) : "fixed text"}</small><button class="x" aria-label="Delete">×</button></div>`;
   }).join("") || `<p class="hint">This design has no editable text yet. Use Add text.</p>`;
   $("elAddCol").innerHTML = `<option value="">＋ Add Excel column…</option>` +
-    S.columns.filter((c) => c.key !== "qty" && !editor.findField(c.key)).map((c) => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join("");
+    wordCols().filter((c) => !editor.findField(c.key)).map((c) => `<option value="${esc(c.key)}">${esc(c.label)}</option>`).join("");
 }
 const renderElementsSoon = debounce(renderElements, 150);
 
@@ -657,6 +663,7 @@ editor.initEditor({
   selection: onSelection,
   columns: columnsForUi,
   valueOf: (f) => fieldValue(row(), f),
+  logoBox: () => logoPlace(itemOf(S.key)),
   bound: onBound,
   dropField: (f, p) => { if (S.key) addField(f, p); },
   save: () => (unlocked ? saveDesign() : S.order ? $("saveOrder").click() : null),
@@ -674,11 +681,14 @@ async function printImages(key, r) {
   return { sc, images, hi };
 }
 
+// the school's logo (from the order website) on this design, where its own logo was — see editor addLogo
+const logoFor = (key) => (S.logo ? { src: S.logo, box: logoPlace(itemOf(key)) } : null);
+
 async function renderPrint(key, r, format) {
   const p = await printImages(key, r);
   if (!p) return null;
   const st = r === S.row && key === S.key ? editor.currentState() : S.edits[r + "|" + key];
-  const entry = st ? { state: st, images: p.images } : { scene: { ...p.sc, images: p.images } };
+  const entry = st ? { state: st, images: p.images, logo: logoFor(key) } : { scene: { ...p.sc, images: p.images }, logo: logoFor(key) };
   return editor.renderOffscreen(entry, PRINT_DPI, format);
 }
 
@@ -762,7 +772,7 @@ async function openInIllustrator(all) {
     let name = safeName([String(rw.jenis_plak || "").replace(/^\s*CRYSTAL\s*\/\s*/i, ""), rw.event_line_1 || rw.position || `row ${r + 1}`].filter(Boolean).join(" - ").replace(/\//g, "-"));
     for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
     used.add(name);
-    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images } : { scene: sc } });
+    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images, logo: logoFor(key) } : { scene: sc, logo: logoFor(key) } });
   }
   if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
   // made from the original .ai in Illustrator (artwork and words editable); a design without one
@@ -772,7 +782,7 @@ async function openInIllustrator(all) {
   const svgs = [];
   for (const i of without) {
     const f = files[i], p = await printImages(f.key, f.r);
-    if (p) svgs.push({ name: f.name, svg: await editor.svgOffscreen(f.entry.state ? { state: f.entry.state, images: p.images } : { scene: { ...p.sc, images: p.images } }) });
+    if (p) svgs.push({ name: f.name, svg: await editor.svgOffscreen(f.entry.state ? { state: f.entry.state, images: p.images, logo: f.entry.logo } : { scene: { ...p.sc, images: p.images }, logo: f.entry.logo }) });
   }
   toast(up ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");
   const r = await bridge.sendWhenUp({ job, files: svgs });
@@ -952,6 +962,77 @@ $("backToOrder").onclick = async () => {
 };
 $("openBtn").onclick = openDialog;
 $("openClose").onclick = () => $("openDlg").close();
+
+// ------------------------------------------------------------------ School logos (admin)
+// The list being changed: [{ id, name, file (kept) | data (new, png data URL) }], and the kept
+// pictures no longer used. Nothing is kept until Save.
+let logoEdit = null;
+$("logosBtn").onclick = async () => {
+  let list = [];
+  try { list = await store.logos(); } catch (e) { return toast(e.message, "bad"); }
+  logoEdit = { list: (Array.isArray(list) ? list : []).map((x) => ({ ...x })), drop: [] };
+  $("logosSearch").value = "";
+  renderLogos();
+  $("logosDlg").showModal();
+};
+function renderLogos() {
+  const q = schoolKey($("logosSearch").value);
+  $("logosList").innerHTML = logoEdit.list.map((x, i) => (q && !schoolKey(x.name).includes(q) ? "" :
+    `<div class="logocell"><img alt="" src="${esc(x.data || fileUrl(x.file))}">` +
+    `<input data-i="${i}" value="${esc(x.name)}" placeholder="School name" aria-label="School name">` +
+    `<button type="button" class="x" data-del="${i}" title="Delete this logo" aria-label="Delete this logo">✕</button></div>`)).join("") ||
+    `<p class="hint">No logos yet. Import an .ai with your schools' logos.</p>`;
+  const unnamed = logoEdit.list.filter((x) => !x.name.trim()).length;
+  $("logosNote").textContent = `${logoEdit.list.length} logo${logoEdit.list.length === 1 ? "" : "s"}` + (unnamed ? ` · ${unnamed} without a school name (type it in)` : "");
+}
+$("logosSearch").oninput = () => renderLogos();
+$("logosList").addEventListener("input", (e) => {
+  const i = e.target.dataset.i;
+  if (i == null) return;
+  logoEdit.list[+i].name = e.target.value;
+  const unnamed = logoEdit.list.filter((x) => !x.name.trim()).length;
+  $("logosNote").textContent = `${logoEdit.list.length} logo${logoEdit.list.length === 1 ? "" : "s"}` + (unnamed ? ` · ${unnamed} without a school name (type it in)` : "");
+});
+$("logosList").addEventListener("click", (e) => {
+  const b = e.target.closest("[data-del]");
+  if (!b) return;
+  const [x] = logoEdit.list.splice(+b.dataset.del, 1);
+  if (x && x.file) logoEdit.drop.push(x.file);
+  renderLogos();
+});
+$("logosFile").onchange = async (e) => {
+  const f = e.target.files[0];
+  e.target.value = "";
+  if (!f) return;
+  try {
+    const found = await extractLogos(f, (m) => toast(m));
+    if (!found.length) return toast(`No logos found in ${f.name}.`, "bad");
+    // new ones first, to check them
+    logoEdit.list.unshift(...found.map((x) => ({ id: newId(), name: x.name, data: x.data })));
+    const unnamed = found.filter((x) => !x.name).length;
+    toast(`Found ${found.length} logo${found.length === 1 ? "" : "s"} in ${f.name}.` + (unnamed ? ` ${unnamed} had no name next to it: type the school's name under each.` : " Check the names, then Save."));
+    renderLogos();
+  } catch (err) { toast(err.message, "bad"); }
+};
+$("logosClose").onclick = () => $("logosDlg").close();
+$("logosSave").onclick = async () => {
+  const unnamed = logoEdit.list.filter((x) => !x.name.trim());
+  if (unnamed.length && !await ask(`${unnamed.length} logo${unnamed.length === 1 ? " has" : "s have"} no school name and won't be kept. Save the others?`)) return;
+  // one logo per school: the one higher in the list (just imported) wins
+  const seen = new Set(), list = [], add = [], drop = [...logoEdit.drop];
+  for (const x of logoEdit.list) {
+    const k = schoolKey(x.name);
+    if (!k || seen.has(k)) { if (x.file) drop.push(x.file); continue; }
+    seen.add(k);
+    const file = x.file || `logos/${x.id}.png`;
+    if (x.data) add.push({ file, data: x.data });
+    list.push({ id: x.id, name: x.name.trim(), file });
+  }
+  toast("Saving the logos…");
+  try { await store.saveLogos(list, add, drop.filter((f) => !list.some((x) => x.file === f))); } catch (e) { return toast(e.message, "bad"); }
+  $("logosDlg").close();
+  toast(`Saved ${list.length} school logo${list.length === 1 ? "" : "s"}.`);
+};
 $("newBtn").onclick = async () => {
   if (S.dirty && !await ask("Start a new design? Unsaved changes will be lost.")) return;
   Object.assign(S, { columns: SAMPLE_COLUMNS, rows: sampleRows(), row: 0, rowTpl: {}, edits: {}, lastKey: null, sourceName: "", sheet: "", wb: null, design: { id: null, name: "Untitled design" }, dirty: false });
@@ -983,10 +1064,12 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
   try { setMaster(await store.master()); } catch (e) {}
   try { S.library = await store.listLibrary(); } catch (e) { S.library = []; toast(e.message, "bad"); }
   // designs imported before the logo clean-up: cleaned once now (and saved)
-  if (S.library.some((it) => it.source === "pdf" && it.original && !it.cleaned)) {
-    toast("Taking the school logos out of older designs (only this once)…");
+  // (and, for those cleaned before, where their logo was: the school's logo goes there)
+  if (S.library.some((it) => it.source === "pdf" && it.original && (it.cleaned || 0) < CLEAN_VERSION)) {
+    const fresh = S.library.some((it) => it.source === "pdf" && it.original && !it.cleaned);
+    toast(fresh ? "Taking the school logos out of older designs (only this once)…" : "Finding where each design's logo goes (only this once)…");
     const n = await autoCleanAll(S.library, store.saveLibrary);
-    if (n) toast(`Cleaned ${n} older design${n === 1 ? "" : "s"}. Use Remove from background for anything left.`);
+    if (n && fresh) toast(`Cleaned ${n} older design${n === 1 ? "" : "s"}. Use Remove from background for anything left.`);
   }
   S.source = sources()[0] ? sources()[0].file : null;
   // opened from the order website's crystal preview (✎ Edit): start with that order's rows
@@ -1003,6 +1086,9 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.rows = opened.rows.map((r) => Object.fromEntries(keys.map((k) => [k, String(r[k] ?? "")])));
     S.sourceName = opened.name || "Order";
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
+    // the school's logo: the one uploaded with the order, else the kept one for its school
+    try { S.logo = await orderLogo({ logo: opened.logo, school: opened.school }, await store.logos()); } catch (e) { S.logo = null; }
+    editor.setLogo(S.logo);
     // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
     if (opened.role === "teacher") { document.body.classList.add("teacher"); unlocked = false; setAdmin(false); }
     S.origKeys = S.rows.map(contentKey);

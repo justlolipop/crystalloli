@@ -94,7 +94,9 @@ function strip(json) {
   o.objects = (o.objects || []).filter((x) => !(x.data && (x.data.role === "bg" || x.data.role === "art")));
   return JSON.stringify(o);
 }
-export const currentState = (json) => ({ w: ed.W, h: ed.H, json: strip(json || snapshot()) });
+// logoSeen: made while the school's logo was offered (see setLogo): it's in there, or it was
+// taken out on purpose — either way it isn't added again
+export const currentState = (json) => ({ w: ed.W, h: ed.H, json: strip(json || snapshot()), ...(ed.logoSrc ? { logoSeen: true } : {}) });
 
 function changed() {
   if (ed.quiet) return;
@@ -168,6 +170,23 @@ export function makeText(t) {
     },
   });
 }
+
+// The school's logo (from the order website), put where the design's own logo was: an ordinary
+// picture, to move, resize or delete. logo = { src (data URL), box: { l, t, r, b } in pt }.
+// Not added twice, nor into a design saved while it was offered (logoSeen).
+async function addLogo(canvas, logo, state) {
+  if (!logo || !logo.src || !logo.box || (state && state.logoSeen)) return;
+  if (canvas.getObjects().some((o) => o.data && o.data.logo)) return;
+  const img = await loadImage(logo.src);
+  if (!img) return;
+  const b = logo.box, k = Math.min((b.r - b.l) / img.width, (b.b - b.t) / img.height);
+  img.set({ left: (b.l + b.r) / 2, top: (b.t + b.b) / 2, originX: "center", originY: "center", scaleX: k, scaleY: k, data: { role: "image", logo: true } });
+  canvas.insertAt(img, canvas.getObjects().filter(isTemplateImage).length, false);
+}
+// the school's logo for the designs shown here (data URL), or null; where it goes on each design
+// comes from hooks.logoBox()
+export function setLogo(src) { ed.logoSrc = src || null; }
+const logoNow = () => (ed.logoSrc && ed.hooks.logoBox ? { src: ed.logoSrc, box: ed.hooks.logoBox() } : null);
 
 // template pictures go at the very bottom, locked
 async function insertImages(canvas, images, alive = () => true) {
@@ -282,6 +301,8 @@ export async function build(scene) {
     setDoc(scene.width, scene.height);
     const ok = await addSceneTo(cv, scene, () => token === ed.token);
     if (!ok || token !== ed.token) return false;
+    await addLogo(cv, logoNow());
+    if (token !== ed.token) return false;
     cv.renderAll();
   } finally {
     ed.quiet--;
@@ -305,6 +326,8 @@ export async function loadState(state, images) {
     if (token !== ed.token) return false;
     patchFonts(cv);
     if (!(await insertImages(cv, images, () => token === ed.token))) return false;
+    await addLogo(cv, logoNow(), state);
+    if (token !== ed.token) return false;
     cv.renderAll();
   } finally {
     ed.quiet--;
@@ -339,7 +362,26 @@ async function offscreen(entry) {
   } else {
     await addSceneTo(sc, entry.scene);
   }
+  await addLogo(sc, entry.logo, entry.state); // entry.logo: { src, box }, see addLogo
   return { sc, w, h };
+}
+
+// each line of a text (not turned) as its own box in pt, where the studio draws it — for
+// Illustrator when it won't line the lines up itself
+function linesOf(o) {
+  const n = (o._textLines || []).length;
+  if (n < 2 || o.angle) return null;
+  const tl = o.getPointByOrigin("left", "top"), sx = Math.abs(o.scaleX || 1), sy = o.scaleY || 1;
+  const out = [];
+  let y = tl.y;
+  for (let i = 0; i < n; i++) {
+    const w = o.getLineWidth(i), h = o.getHeightOfLine(i) / (i === n - 1 ? o.lineHeight || 1 : 1);
+    let x = o._getLineLeftOffset(i);
+    if (o.flipX) x = o.width - x - w;
+    out.push({ text: o._textLines[i].join(""), l: tl.x + x * sx, r: tl.x + (x + w) * sx, t: y, b: y + h * sy });
+    y += o.getHeightOfLine(i) * sy;
+  }
+  return out;
 }
 
 // every text of a row's design as plain data (box in pt from the design's top-left), for
@@ -356,6 +398,7 @@ export async function textsOf(entry) {
       lineHeight: o.lineHeight || 1, tracking: o.charSpacing || 0, angle: o.angle || 0, flipX: !!o.flipX,
       stroke: typeof o.stroke === "string" && o.strokeWidth > 0 ? o.stroke : null, strokeWidth: (o.strokeWidth || 0) * (o.scaleY || 1), strokeBehind: o.paintFirst === "stroke",
       outer: o.outerStroke && o.outerStrokeWidth > 0 ? o.outerStroke : null, outerWidth: (o.outerStrokeWidth || 0) * (o.scaleY || 1),
+      lines: linesOf(o),
     };
   });
   sc.dispose();
@@ -487,11 +530,14 @@ function zoomBy(f) {
 
 // ------------------------------------------------------------------ snapping guides
 
+// Only left-right: a text dragged near the middle (or under another text) lines up with it. No
+// up-down snapping: texts sit just above or below the crystal's middle and were pulled onto it.
+// Hold Alt while dragging to place it freely.
 function snap(e) {
   const o = e.target;
-  if (!o) return;
-  const th = 6 / ed.zoom;
   ed.guides = [];
+  if (!o || (e.e && e.e.altKey)) return;
+  const th = 6 / ed.zoom;
   const c = o.getCenterPoint();
   const xs = [ed.W / 2];
   for (const p of cv.getObjects()) {
@@ -500,10 +546,9 @@ function snap(e) {
   }
   let bx = null;
   for (const v of xs) if (Math.abs(v - c.x) < th && (bx === null || Math.abs(v - c.x) < Math.abs(bx - c.x))) bx = v;
-  const by = Math.abs(ed.H / 2 - c.y) < th ? ed.H / 2 : null;
-  if (bx !== null) ed.guides.push({ x: bx });
-  if (by !== null) ed.guides.push({ y: by });
-  if (bx !== null || by !== null) o.setPositionByOrigin(new fabric.Point(bx ?? c.x, by ?? c.y), "center", "center");
+  if (bx === null) return;
+  ed.guides.push({ x: bx });
+  o.setPositionByOrigin(new fabric.Point(bx, c.y), "center", "center");
 }
 
 function drawGuides() {

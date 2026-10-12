@@ -282,7 +282,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-09e"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-09f"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;

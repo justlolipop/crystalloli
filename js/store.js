@@ -140,6 +140,12 @@ const online = {
     await upsert("crystal_settings", { key, value, updated_at: new Date().toISOString() });
     return value;
   },
+  // school logos: the list (setting "logos": [{ id, name, file }]) and their pictures (logos/<id>.png)
+  async saveLogos(list, add, drop) {
+    for (const x of add) await putFile(x.file, await dataUrlBlob(x.data), "image/png");
+    await removeFiles(drop);
+    return online.saveSetting("logos", list);
+  },
   // font files kept online (fonts/<PostScript name>.ttf / .otf / .woff2), for computers that don't have them
   async fontFiles() {
     const r = await sb(`/storage/v1/object/list/${BUCKET}`, { method: "POST", body: { prefix: "fonts/", limit: 1000 } }).catch(() => []);
@@ -205,6 +211,13 @@ export const store = {
   // the master template: the look of the header, position and name texts on every design
   master: () => (ONLINE ? online.setting("master", {}) : api("GET", "/api/master")),
   saveMaster: (m) => (ONLINE ? online.saveSetting("master", m && typeof m === "object" && !Array.isArray(m) ? m : {}) : api("POST", "/api/master", m)).then(announce),
+  // school logos (see js/logos.js): [{ id, name, file }]; saving: the new list, the new pictures
+  // ([{ file, data }]) and the files no longer used
+  logos: () => (ONLINE ? online.setting("logos", []) : Promise.resolve([])),
+  saveLogos(list, add = [], drop = []) {
+    if (!ONLINE) return Promise.reject(new Error("School logos are kept online: open Crystal Studio from its website."));
+    return online.saveLogos(list, add, drop).then(announce);
+  },
   // true when the studio can work: online, or this page comes from server.js
   async ping() { return ONLINE || local(); },
   // this PC's server (template folder, Illustrator) is there
