@@ -112,6 +112,9 @@ function templateLook(b) {
   // a white (or nearly) colour is the white outline behind the letters, read as theirs: words
   // that colour would vanish on the crystal, so they keep the usual dark colour
   if (look && !darkEnough(look.fill)) delete look.fill;
+  // a light outline goes behind the letters (as in Illustrator, where it's under them): drawn on
+  // top, a thick white outline covers the letters and the words vanish
+  if (look && look.stroke && !darkEnough(look.stroke)) look.paintFirst = "stroke";
   return look;
 }
 function darkEnough(c) {
@@ -162,6 +165,13 @@ async function masterTexts(item, row) {
     const own = item.look && item.look[f];
     const look = own ? { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...own }
       : { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...fontOnly(master[f]), ...(g.look || {}) };
+    // never words that can't be seen on the crystal: a dark colour, a light outline behind them,
+    // a width and line height that draw something
+    if (!darkEnough(look.fill)) look.fill = DEFAULT_MASTER[f].fill;
+    if (look.stroke && !darkEnough(look.stroke)) look.paintFirst = "stroke";
+    if (!(look.scaleX > 0.2)) look.scaleX = DEFAULT_MASTER[f].scaleX;
+    if (!(look.lineHeight > 0.3)) look.lineHeight = DEFAULT_MASTER[f].lineHeight;
+    if (look.opacity !== undefined && !(look.opacity > 0.2)) delete look.opacity;
     const css = look.ps ? await useFont(look.ps, look.family, look.style) : `"${look.family}", sans-serif`;
     const base = s ? s.fontSize : g.size, maxW = s ? s.maxW : g.maxW;
     const below = tops.filter((t, j) => j !== i && t > tops[i] + 1);
