@@ -157,7 +157,7 @@ function loadImage(src) {
 }
 
 export function makeText(t) {
-  return new fabric.IText(String(t.text ?? ""), {
+  return outlineBehind(new fabric.IText(String(t.text ?? ""), {
     left: t.left, top: t.top, originX: t.originX || "left", originY: "top", textAlign: t.textAlign || "left",
     fontFamily: t.css || "Arial", fontSize: t.fontSize || 12, fontWeight: t.fontWeight || "normal", fontStyle: t.fontStyle || "normal",
     fill: t.fill || "#000000", stroke: t.stroke || null, strokeWidth: t.stroke ? t.strokeWidth || 0.2 : 0,
@@ -168,7 +168,7 @@ export function makeText(t) {
       role: "text", field: t.field || null, ps: t.ps || null, frame: t.frame || null, src: t.src ?? null, tplText: t.tplText || null,
       defLeft: t.left, defTop: t.top, vs: t.scaleY || 1, maxW: t.maxW || null,
     },
-  });
+  }));
 }
 
 // The school's logo (from the order website), put where the design's own logo was: an ordinary
@@ -275,8 +275,22 @@ async function fontsInJson(json) {
   await Promise.all([...list].map((p) => useFont(p)));
 }
 
+// A light (white) outline goes behind the letters, as in Illustrator: drawn on top it covers thin
+// letters completely and the words vanish. For every text shown, saved ones too.
+function lightColour(c) {
+  try {
+    const [r, g, b] = new fabric.Color(c).getSource();
+    return 0.299 * r + 0.587 * g + 0.114 * b >= 200;
+  } catch (e) { return false; }
+}
+function outlineBehind(o) {
+  if (isText(o) && o.stroke && o.strokeWidth > 0 && o.paintFirst !== "stroke" && lightColour(o.stroke)) o.set("paintFirst", "stroke");
+  return o;
+}
+
 function patchFonts(canvas) {
   canvas.getObjects().forEach((o) => {
+    outlineBehind(o);
     if (isText(o) && o.data && o.data.ps) {
       const fb = fallbackFor(o.data.ps);
       if (fb && o.fontFamily !== fb) o.set("fontFamily", fb);
@@ -730,7 +744,7 @@ function wireToolbar() {
     const v = +$("fLeading").value;
     if (v > 0) commit((o) => isText(o) && o.set("lineHeight", v / (o.fontSize * 1.13)));
   };
-  const setStroke = (o, color, w) => o.set(w > 0 ? { stroke: color, strokeWidth: w } : { stroke: null, strokeWidth: 0 });
+  const setStroke = (o, color, w) => outlineBehind(o.set(w > 0 ? { stroke: color, strokeWidth: w } : { stroke: null, strokeWidth: 0 }));
   $("fStroke").oninput = () => live((o) => isText(o) && setStroke(o, $("fStroke").value, +$("fStrokeW").value || 0.3));
   $("fStroke").onchange = () => { if (!(+$("fStrokeW").value > 0)) $("fStrokeW").value = 0.3; commit(); };
   $("fStrokeW").onchange = () => commit((o) => isText(o) && setStroke(o, $("fStroke").value, +$("fStrokeW").value || 0));
