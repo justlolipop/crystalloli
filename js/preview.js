@@ -10,7 +10,7 @@ import { esc } from "./util.js";
 import { setFontList, setFontFiles } from "./fonts.js";
 import { store, onLibraryChanged } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll, hiResBackground, logoPlace } from "./library.js";
-import { orderLogo } from "./logos.js";
+import { logoPicker } from "./logos.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
@@ -98,8 +98,9 @@ async function loadCustom() {
   try { const d = await store.loadDesign(orderDesignId(order)); custom = (d && d.data && d.data.custom) || {}; } catch (e) { /* none yet */ }
 }
 // the school's logo (data URL, see logos.js) where this design's own logo was, or null
-let logo = null, logoFrom = { logo: null, school: null };
-const logoOn = (it) => (logo ? { src: logo, box: logoPlace(it) } : null);
+// (a crystal's own: its school found in its words — see logoPicker)
+let logos = [], logoFrom = { logo: null, school: null }, pickLogo = async () => null;
+const logoOn = async (it, row) => { const src = await pickLogo(row); return src ? { src, box: logoPlace(it) } : null; };
 
 // one crystal's picture: this order's own design if it has one, else the default.
 // svg: an Illustrator file instead (editable words, the artwork at print quality)
@@ -110,7 +111,8 @@ async function picture(it, jenis, row, dpi, svg = false) {
     if (hi) scene.images = scene.images.map((im) => (im.role === "bg" ? { ...im, src: hi } : im));
   }
   const own = custom[rowKey(jenis, row)];
-  const entry = own ? { state: own, images: scene.images, logo: logoOn(it) } : { scene, logo: logoOn(it) };
+  const lg = await logoOn(it, row);
+  const entry = own ? { state: own, images: scene.images, logo: lg } : { scene, logo: lg };
   return svg ? svgOffscreen(entry) : (await renderOffscreen(entry, dpi)).url;
 }
 const short = (jenis) => jenis.replace(/^\s*CRYSTAL\s*\/\s*/i, "");
@@ -237,7 +239,8 @@ async function generateAll(ai) {
       const list = [];
       for (const f of files) {
         const scene = await libraryScene(f.c.it, f.c.t.row, columns), own = custom[rowKey(f.c.g.jenis, f.c.t.row)];
-        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: logoOn(f.c.it) } : { scene, logo: logoOn(f.c.it) }, name: f.name });
+        const lg = await logoOn(f.c.it, f.c.t.row);
+        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: lg } : { scene, logo: lg }, name: f.name });
       }
       const { job, without } = await vectorJob(list);
       const svgs = [];
@@ -399,11 +402,13 @@ async function reloadLibrary() {
   try {
     const was = JSON.stringify(custom);
     const [lib, m, lg] = await Promise.all([store.listLibrary(), store.master(),
-      store.logos().then((list) => orderLogo(logoFrom, list)).catch(() => logo), loadCustom()]);
-    const same = JSON.stringify(lib) === JSON.stringify(library) && JSON.stringify(m) === JSON.stringify(lastMaster) && JSON.stringify(custom) === was && lg === logo;
+      store.logos().catch(() => logos), loadCustom()]);
+    const same = JSON.stringify(lib) === JSON.stringify(library) && JSON.stringify(m) === JSON.stringify(lastMaster) && JSON.stringify(custom) === was &&
+      JSON.stringify(lg) === JSON.stringify(logos);
     if (!same) {
       library = lib;
-      logo = lg;
+      logos = Array.isArray(lg) ? lg : [];
+      pickLogo = logoPicker(logoFrom, logos);
       lastMaster = m;
       setMaster(m);
       pics.clear();
@@ -432,7 +437,7 @@ window.addEventListener("message", (e) => {
       logoFrom = from;
       pics.clear();
       smalls.clear();
-      Promise.all([loadCustom(), store.logos().then((list) => orderLogo(from, list)).catch(() => null).then((d) => { logo = d; })])
+      Promise.all([loadCustom(), store.logos().catch(() => []).then((list) => { logos = Array.isArray(list) ? list : []; pickLogo = logoPicker(from, logos); })])
         .then(() => show(rows));
     } else show(rows);
   }

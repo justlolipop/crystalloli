@@ -7,7 +7,7 @@ import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, download
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos } from "./library.js";
-import { schoolKey, orderLogo } from "./logos.js";
+import { schoolKey, logoPicker } from "./logos.js";
 import { newId } from "./libitem.js";
 import { illustratorScript } from "./illustrator.js";
 import * as editor from "./editor.js";
@@ -121,6 +121,8 @@ async function show(r, key) {
   }
   const scene = await sceneFor(key, S.row);
   if (token !== showToken || !scene) return;
+  editor.setLogo(await pickLogo(S.rows[S.row])); // this crystal's school logo, see logos.js
+  if (token !== showToken) return;
   const saved = S.edits[S.row + "|" + key];
   const ok = saved ? await editor.loadState(saved, scene.images) : await editor.build(scene);
   if (!ok || token !== showToken) return;
@@ -682,13 +684,16 @@ async function printImages(key, r) {
 }
 
 // the school's logo (from the order website) on this design, where its own logo was — see editor addLogo
-const logoFor = (key) => (S.logo ? { src: S.logo, box: logoPlace(itemOf(key)) } : null);
+// (row r: the logo uploaded with the order, else the kept one for its school or named in its words)
+let pickLogo = async () => null;
+const logoFor = async (key, r) => { const src = await pickLogo(S.rows[r]); return src ? { src, box: logoPlace(itemOf(key)) } : null; };
 
 async function renderPrint(key, r, format) {
   const p = await printImages(key, r);
   if (!p) return null;
   const st = r === S.row && key === S.key ? editor.currentState() : S.edits[r + "|" + key];
-  const entry = st ? { state: st, images: p.images, logo: logoFor(key) } : { scene: { ...p.sc, images: p.images }, logo: logoFor(key) };
+  const lg = await logoFor(key, r);
+  const entry = st ? { state: st, images: p.images, logo: lg } : { scene: { ...p.sc, images: p.images }, logo: lg };
   return editor.renderOffscreen(entry, PRINT_DPI, format);
 }
 
@@ -772,7 +777,8 @@ async function openInIllustrator(all) {
     let name = safeName([String(rw.jenis_plak || "").replace(/^\s*CRYSTAL\s*\/\s*/i, ""), rw.event_line_1 || rw.position || `row ${r + 1}`].filter(Boolean).join(" - ").replace(/\//g, "-"));
     for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
     used.add(name);
-    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images, logo: logoFor(key) } : { scene: sc, logo: logoFor(key) } });
+    const lg = await logoFor(key, r);
+    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images, logo: lg } : { scene: sc, logo: lg } });
   }
   if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
   // made from the original .ai in Illustrator (artwork and words editable); a design without one
@@ -1031,6 +1037,8 @@ $("logosSave").onclick = async () => {
   toast("Saving the logos…");
   try { await store.saveLogos(list, add, drop.filter((f) => !list.some((x) => x.file === f))); } catch (e) { return toast(e.message, "bad"); }
   $("logosDlg").close();
+  pickLogo = logoPicker(S.logoFrom || {}, list);
+  if (S.key) await show(S.row);
   toast(`Saved ${list.length} school logo${list.length === 1 ? "" : "s"}.`);
 };
 $("newBtn").onclick = async () => {
@@ -1086,14 +1094,14 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.rows = opened.rows.map((r) => Object.fromEntries(keys.map((k) => [k, String(r[k] ?? "")])));
     S.sourceName = opened.name || "Order";
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
-    // the school's logo: the one uploaded with the order, else the kept one for its school
-    try { S.logo = await orderLogo({ logo: opened.logo, school: opened.school }, await store.logos()); } catch (e) { S.logo = null; }
-    editor.setLogo(S.logo);
+    S.logoFrom = { logo: opened.logo, school: opened.school };
     // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
     if (opened.role === "teacher") { document.body.classList.add("teacher"); unlocked = false; setAdmin(false); }
     S.origKeys = S.rows.map(contentKey);
     $("srcHint").textContent = `${S.sourceName} · ${S.rows.length} row${S.rows.length === 1 ? "" : "s"} from the order website`;
   }
+  // the schools' logos: each crystal gets its own (see logos.js logoPicker)
+  try { const list = await store.logos(); pickLogo = logoPicker(S.logoFrom || {}, Array.isArray(list) ? list : []); } catch (e) {}
   buildGroups();
   if (S.order) {
     $("saveOrder").hidden = false;
