@@ -49,23 +49,44 @@ export function useFont(ps, family, style) {
     const r = byPs[ps];
     const fam = family || (r && r[1]) || "";
     const sty = style || (r && r[2]) || "";
-    const srcs = [ps, `${fam} ${sty}`.trim(), fam].filter(Boolean)
-      .map((n) => `local("${n.replace(/["\\]/g, "")}")`).concat(files[ps] ? [`url("${files[ps].replace(/["\\]/g, "")}")`] : []).join(", ");
+    const locals = [ps, `${fam} ${sty}`.trim(), fam].filter(Boolean).map((n) => `local("${n.replace(/["\\]/g, "")}")`);
+    const online = files[ps] ? [`url("${files[ps].replace(/["\\]/g, "")}")`] : [];
     const entry = { css: cssName(ps), ok: null, fallback: fam ? `"${fam.replace(/"/g, "")}", sans-serif` : "Arial" };
     entry.promise = (async () => {
-      try {
-        const face = new FontFace(entry.css, srcs);
-        document.fonts.add(face);
-        await face.load();
-        entry.ok = true;
-      } catch (e) {
-        entry.ok = false;
+      // this PC's font first, else the one kept online; a font that loads but draws no letters (a
+      // broken or locked file) is not used
+      for (const srcs of [locals.concat(online), locals]) {
+        if (!srcs.length) continue;
+        try {
+          const face = new FontFace(entry.css, srcs.join(", "));
+          await face.load();
+          document.fonts.add(face);
+          if (drawsLetters(entry.css)) { entry.ok = true; break; }
+          document.fonts.delete(face);
+        } catch (e) { /* try the next */ }
+        if (srcs === locals) break;
       }
+      if (!entry.ok) entry.ok = false;
       return entry.ok ? entry.css : entry.fallback;
     })();
     faces[ps] = entry;
   }
   return faces[ps].promise;
+}
+
+// does this font really draw letters? (some font files load fine but are empty or locked)
+export function drawsLetters(css) {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 120; c.height = 60;
+    const x = c.getContext("2d", { willReadFrequently: true });
+    x.font = `40px "${css}", serif`;
+    if (!(x.measureText("HAMBURG").width > 10)) return false;
+    x.fillText("HAM", 4, 46);
+    const d = x.getImageData(0, 0, 120, 60).data;
+    for (let i = 3; i < d.length; i += 4) if (d[i] > 0) return true;
+    return false;
+  } catch (e) { return true; }
 }
 
 export function missingFonts() {

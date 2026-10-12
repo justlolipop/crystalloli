@@ -160,11 +160,8 @@ async function masterTexts(item, row) {
     const text = fieldValue(row, f);
     if (!text.trim()) continue;
     const g = guess[f], s = saved[f];
-    // its look: as set on this design (Save as default template), else its own words' in the .ai,
-    // else the J&E look; the master (from any design) only gives the font
-    const own = item.look && item.look[f];
-    const look = own ? { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...own }
-      : { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...fontOnly(master[f]), ...(g.look || {}) };
+    // its look: the master template's (Save as default template), as before
+    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...(master[f] || {}) };
     // never words that can't be seen on the crystal: a dark colour, a light outline behind them,
     // a width and line height that draw something
     if (!darkEnough(look.fill)) look.fill = DEFAULT_MASTER[f].fill;
