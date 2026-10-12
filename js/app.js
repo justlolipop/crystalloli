@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-12g";
+const VERSION = "2026-10-12h";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1110,6 +1110,7 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     toast("Not connected to Crystal Studio's program (server.js) — see the message on the page.", "bad");
     return;
   }
+  setFontList([]); // the three crystal fonts in the font box, whatever comes next
   try { setFontList(await store.fonts()); } catch (e) {}
   try { setFontFiles(await store.fontFiles()); } catch (e) {}
   // the template folder is on this PC: only there when the studio runs from server.js

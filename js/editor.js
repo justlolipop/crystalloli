@@ -616,6 +616,8 @@ function normaliseTextScale(o) {
 // ------------------------------------------------------------------ adding things
 
 export async function addText(text, opts = {}) {
+  // a new text starts in one of the crystal fonts (Teko Bold) unless told otherwise
+  if (!opts.ps && !opts.css) opts = { ...opts, ps: "Teko-Bold" };
   const css = opts.ps ? await useFont(opts.ps) : opts.css || "Arial";
   const size = opts.fontSize || Math.max(6, Math.round(Math.min(ed.W, ed.H) * 0.08));
   const t = makeText({
@@ -830,7 +832,16 @@ function syncToolbar() {
   $("ctxHint").hidden = !!list.length;
   if (texts.length) {
     const t = texts[0];
-    $("fFont").value = t.data && t.data.ps ? describeFont(t.data.ps) : familyName(t.fontFamily);
+    // the font box offers only the three crystal fonts; a text in another font shows its name greyed
+    const label = t.data && t.data.ps ? describeFont(t.data.ps) : familyName(t.fontFamily);
+    const box = $("fFont");
+    box.querySelectorAll("option[data-other]").forEach((x) => x.remove());
+    if (![...box.options].some((x) => x.value === label)) {
+      const x = document.createElement("option");
+      x.value = label; x.textContent = label + " (not a crystal font)"; x.disabled = true; x.dataset.other = "1";
+      box.appendChild(x);
+    }
+    box.value = label;
     $("fSize").value = round2(t.fontSize);
     $("fColor").value = hex(t.fill);
     press("fBold", t.fontWeight === "bold" || +t.fontWeight >= 600);

@@ -34,7 +34,7 @@ input[type="number"], input.font, #designName {
   border-radius: 7px; padding: 5px 8px; min-height: 32px;
 }
 input[type="number"] { width: 64px; }
-input.font { width: 190px; }
+input.font, select.font { width: 190px; }
 input[type="color"] { width: 32px; height: 32px; padding: 2px; border: 1px solid var(--line); border-radius: 7px; background: var(--panel); cursor: pointer; }
 input[type="range"] { width: 80px; accent-color: var(--acc); }
 .ib { min-width: 32px; padding: 0 7px; display: inline-grid; place-items: center; }
@@ -198,7 +198,7 @@ input.path {
 
 @media (max-width: 720px) {
   #stageWrap { height: 54vh; padding: 12px; }
-  input.font { width: 140px; }
+  input.font, select.font { width: 140px; }
   .tpl-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
   .tcard .thumb { height: 96px; }
   .toolbar { position: static; }

@@ -131,7 +131,7 @@ body:not(.teacher) #teacherHint{display:none}
      <div class="tb-row ctx" id="ctxBar">
       <span class="admin-only hint" id="ctxHint">Click anything on the design to change it — font, size, colour, position…</span>
       <div class="tg" id="tgText" hidden>
-        <input id="fFont" class="font" list="fontList" aria-label="Font" placeholder="Font" spellcheck="false">
+        <select id="fFont" class="font" aria-label="Font"></select>
         <input id="fSize" type="number" min="1" max="999" step="0.5" aria-label="Font size in pt" title="Size (pt)">
         <input id="fColor" type="color" aria-label="Text colour" title="Text colour">
         <button id="fBold" class="ib" aria-pressed="false" title="Bold"><b>B</b></button>
@@ -198,7 +198,6 @@ body:not(.teacher) #teacherHint{display:none}
   </section>
 </div>
 
-<datalist id="fontList"></datalist>
 
 <dialog id="openDlg" aria-labelledby="openH">
   <h3 id="openH">Saved jobs</h3>
