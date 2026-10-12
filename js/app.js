@@ -523,14 +523,15 @@ $("applyAll").onclick = async () => {
 
 // Save as default template: where this design's header, position and name sit (and how big)
 // becomes its layout for every row and for the order website's preview; their font, colour and
-// outline become the master look of every design. Rows changed by hand on this design start over.
+// outline become this design's look (other designs keep their own, from their .ai; only the font
+// is also offered to designs whose words were drawn as shapes). Rows changed by hand on this design start over.
 $("saveDefault").onclick = async () => {
   const it = itemOf(S.key);
   if (!it || it.source !== "pdf") return toast("Pick a crystal design (.ai) first.", "bad");
   const texts = editor.objects().filter((o) => editor.isText(o) && o.data && MASTER_FIELDS.includes(o.data.field));
   if (!texts.length) return toast("This crystal has no header, position or name text to save.", "bad");
-  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline become the master for every design.`)) return;
-  const layout = { ...(it.layout || {}) }, look = { ...getMaster() };
+  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline are kept for this design (other designs keep their own).`)) return;
+  const layout = { ...(it.layout || {}) }, look = { ...getMaster() }, mine = { ...(it.look || {}) };
   for (const o of texts) {
     const f = o.data.field, sy = o.scaleY || 1, size = Math.round(o.fontSize * sy * 100) / 100;
     let top = o.top, lines = String(o.text || "").split("\n").length;
@@ -549,13 +550,14 @@ $("saveDefault").onclick = async () => {
       fill: o.fill, stroke: o.stroke || null, strokeWidth: o.strokeWidth || 0, paintFirst: o.paintFirst || "fill",
       strokeLineJoin: o.strokeLineJoin || "miter", outerStroke: o.outerStroke || null, outerStrokeWidth: o.outerStrokeWidth || 0,
       charSpacing: o.charSpacing || 0, lineHeight: o.lineHeight || 1, scaleX: Math.round(((o.scaleX || 1) / sy) * 1000) / 1000 };
+    mine[f] = look[f];
   }
   try {
     // the school's logo, as placed here: where (and how big) every school's logo goes on this design
     const lg = editor.objects().find((o) => o.data && o.data.logo);
     const b = lg && lg.getBoundingRect(true, true);
     const logoBox = b ? { l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height } : undefined;
-    Object.assign(it, await store.saveLibrary({ id: it.id, layout, logoBox }));
+    Object.assign(it, await store.saveLibrary({ id: it.id, layout, logoBox, look: mine }));
     setMaster(await store.saveMaster(look));
   } catch (e) { return toast(e.message, "bad"); }
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
