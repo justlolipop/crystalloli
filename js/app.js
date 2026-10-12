@@ -32,6 +32,10 @@ const sampleRows = () => [
     event_line_1: "NUR AISYAH BINTI AHMAD", event_line_2: "", jenis_plak: "CRYSTAL / SA4 / DESIGN A", category: "MURID" },
 ];
 
+// shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
+const VERSION = "2026-10-12e";
+document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
+
 const S = {
   columns: SAMPLE_COLUMNS, rows: sampleRows(), row: 0, sourceName: "", wb: null, sheet: "",
   source: null,   // file selected in the Templates panel (an imported .ai / .pdf / .svg name)
