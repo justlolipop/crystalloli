@@ -26,6 +26,11 @@
 /* what only the admin sees (🔒 Admin, the password): changing designs for everyone */
 body:not(.admin) .admin-only{display:none !important}
 body.teacher .ai-only,body.teacher #adminBtn{display:none !important}
+/* a teacher (from their order page) only changes the words: just the crystal, its tools and Save */
+body.teacher #designName,body.teacher #xlPanel,body.teacher #colsBox{display:none !important}
+body.teacher .stagerow{grid-template-columns:minmax(0,1fr) !important}
+#teacherHint{opacity:.8}
+body:not(.teacher) #teacherHint{display:none}
 .sources .src{cursor:pointer}
 .sources .src.on{border-color:var(--acc2,var(--acc));box-shadow:0 0 8px rgba(166,77,255,.35)}
 .srcdesigns{display:flex;flex-wrap:wrap;gap:6px;margin:4px 0 8px}
@@ -55,6 +60,7 @@ body.teacher .ai-only,body.teacher #adminBtn{display:none !important}
     <span id="saveState" class="hint"></span>
     <div class="spacer"></div>
     <button id="adminBtn" title="Change the designs for everyone (Save as default template, remove from background, import…): asks the password">🔒 Admin</button>
+    <span id="teacherHint" class="hint">Double-click a word on the crystal to change it · ‹ › for the next crystal</span>
     <button id="backToOrder" hidden title="Close this tab and go back to the order on the website (its Crystal Preview already shows what you saved)">↩ Back to the order</button>
     <button class="admin-only" id="newBtn">New</button>
     <button class="admin-only" id="openBtn">Open</button>
@@ -76,7 +82,7 @@ body.teacher .ai-only,body.teacher #adminBtn{display:none !important}
     </div>
   </header>
 
-  <section class="panel" aria-labelledby="elH">
+  <section class="panel" id="xlPanel" aria-labelledby="elH">
     <div class="panel-head">
       <h2 id="elH">Excel</h2>
       <span class="hint" id="srcHint">Sample data (2 rows)</span>
