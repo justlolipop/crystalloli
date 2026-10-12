@@ -107,8 +107,18 @@ function wordBoxes(item) {
 // outline as in the .ai (no outline when it had none); words drawn as shapes — their colour
 function templateLook(b) {
   if (!b) return null;
-  if (b.text) return { stroke: null, strokeWidth: 0, outerStroke: null, outerStrokeWidth: 0, ...lookOf(b.text), family: b.text.ps ? "" : b.text.family || "" };
-  return b.look || null;
+  const look = b.text ? { stroke: null, strokeWidth: 0, outerStroke: null, outerStrokeWidth: 0, ...lookOf(b.text), family: b.text.ps ? "" : b.text.family || "" }
+    : b.look ? { ...b.look } : null;
+  // a white (or nearly) colour is the white outline behind the letters, read as theirs: words
+  // that colour would vanish on the crystal, so they keep the usual dark colour
+  if (look && !darkEnough(look.fill)) delete look.fill;
+  return look;
+}
+function darkEnough(c) {
+  const m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(c || "").trim());
+  if (!m) return false;
+  const [r, g, bl] = m.slice(1).map((x) => parseInt(x, 16));
+  return 0.299 * r + 0.587 * g + 0.114 * bl < 200;
 }
 const FONT_KEYS = ["ps", "family", "bold", "italic"];
 const fontOnly = (l) => Object.fromEntries(FONT_KEYS.filter((k) => l && l[k] !== undefined).map((k) => [k, l[k]]));
