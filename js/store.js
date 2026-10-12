@@ -146,6 +146,15 @@ const online = {
     await removeFiles(drop);
     return online.saveSetting("logos", list);
   },
+  // fonts of imported designs, for every computer: their files, and their rows in the font list
+  async addFonts(rows, uploads) {
+    for (const u of uploads) await putFile(u.file, u.blob, u.type);
+    const list = await online.setting("fonts", []);
+    const out = Array.isArray(list) ? list : [];
+    const have = new Set(out.map((r) => r && r[0]));
+    for (const r of rows) if (!have.has(r[0])) { out.push(r); have.add(r[0]); }
+    return online.saveSetting("fonts", out);
+  },
   // font files kept online (fonts/<PostScript name>.ttf / .otf / .woff2), for computers that don't have them
   async fontFiles() {
     const r = await sb(`/storage/v1/object/list/${BUCKET}`, { method: "POST", body: { prefix: "fonts/", limit: 1000 } }).catch(() => []);
@@ -208,6 +217,9 @@ export const store = {
     return ONLINE ? online.setting("fonts", []) : [];
   },
   fontFiles: () => (ONLINE ? online.fontFiles() : Promise.resolve({})),
+  // the font list kept online (also on a PC running server.js), and adding to it (js/font-share.js)
+  sharedFonts: () => (ONLINE ? online.setting("fonts", []) : Promise.resolve([])),
+  addFonts: (rows, uploads = []) => (ONLINE ? online.addFonts(rows, uploads) : Promise.reject(new Error("Fonts are kept online: open Crystal Studio from its website."))),
   // the master template: the look of the header, position and name texts on every design
   master: () => (ONLINE ? online.setting("master", {}) : api("GET", "/api/master")),
   saveMaster: (m) => (ONLINE ? online.saveSetting("master", m && typeof m === "object" && !Array.isArray(m) ? m : {}) : api("POST", "/api/master", m)).then(announce),
