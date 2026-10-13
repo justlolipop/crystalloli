@@ -46,8 +46,10 @@ export function illustratorWindow() {
     // the window tries again every few seconds until it's up
     // An older one answering may be on its way out (the click also asks it to update and restart):
     // then it waits for the new one, rather than handing the job to the one being stopped.
-    async sendWhenUp(what, ms = 90000) {
-      const fresh = (r) => r && r.v >= 2 && String(r.build || "") >= MIN_BUILD;
+    async sendWhenUp(what, ms = 60000) {
+      // any Crystal Studio that makes .ai from the originals (v2) will do: it updates itself when a
+      // newer one is online, and waiting for the newest (GitHub can take minutes) only held things up
+      const fresh = (r) => r && r.v >= 2;
       let ready = await first, last = ready;
       const until = Date.now() + ms;
       while (!fresh(ready) && win && !win.closed && Date.now() < until) {
@@ -67,9 +69,9 @@ export function illustratorWindow() {
       // an older Crystal Studio on this PC (before it made crystals from their original .ai)
       // or older than the one this page needs (print platform, quantities, background kept): refused,
       // as its .ai would come out wrong — it updates itself when it starts again
-      if (!Array.isArray(what) && what.job && what.job.rows && what.job.rows.length && (!(ready.v >= 2) || String(ready.build || "") < MIN_BUILD)) {
+      if (!Array.isArray(what) && what.job && what.job.rows && what.job.rows.length && !(ready.v >= 2)) {
         try { win.close(); } catch (e) {}
-        return { ok: false, old: true, error: `Crystal Studio on this computer is an old version (${ready.build || "old"}, needs ${MIN_BUILD}): close its black window, then click Open in Illustrator again (it updates itself when it starts).` };
+        return { ok: false, old: true, error: `Crystal Studio on this computer is an old version (${ready.build || "old"}): close its black window, then click Open in Illustrator again (it updates itself when it starts).` };
       }
       const r = await deliver(what);
       if (r) r.build = ready.build || "old"; // which Crystal Studio answered
