@@ -13,6 +13,10 @@ const hex = (c) => {
   try { return "#" + new fabric.Color(c).toHex().toLowerCase(); } catch (e) { return null; }
 };
 
+// The printer's platform (pt): 84 x 24 in. Crystals from the bottom right, leftwards, then the next
+// row up; margins and gaps as on the hand-made PRINT AREA (PLATFORM).ai (12 to a row, 2 rows; the left margin a little under the 740 measured, so 12 fit).
+export const PLATFORM = { w: 6048, h: 1728, left: 700, right: 276, top: 72, bottom: 184, gapX: 90, gapY: 92 };
+
 // list: [{ item, entry (as renderOffscreen takes it), name }] -> { job: { outline: false, rows }, without: [indexes] }
 export async function vectorJob(list) {
   const rows = [], without = [];
@@ -29,5 +33,6 @@ export async function vectorJob(list) {
       master: true, remove: await removedBoxes(it).catch(() => []), texts, images: await imagesOf(bare),
     });
   }
-  return { job: { outline: false, rows }, without };
+  // more than one crystal: all on the print platform, as laid out by hand (PRINT AREA (PLATFORM).ai)
+  return { job: { outline: false, rows, ...(rows.length > 1 ? { platform: PLATFORM } : {}) }, without };
 }

@@ -244,9 +244,81 @@ var OUTLINE_TEXT = JOB.outline !== false;
 
   function finish(doc, r) {
     if (OUTLINE_TEXT) for (var i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].createOutline(); } catch (e) {} }
+    if (JOB.platform) { toPlatform(doc, r); doc.close(SaveOptions.DONOTSAVECHANGES); return; }
     var out = new File(outDir.fsName + "/" + pad(r.row) + " - " + safe(r.name) + ".ai");
     doc.saveAs(out, new IllustratorSaveOptions());
     if (!JOB.keepOpen) doc.close(SaveOptions.DONOTSAVECHANGES);
+  }
+
+  // Many crystals: all on the print platform (one artboard the size of the printer's bed, more
+  // artboards when they don't fit), as laid out by hand: from the bottom right, leftwards, then the
+  // next row up; gaps and margins from JOB.platform (pt).
+  var plat = null; // { doc, n (artboards), x (right edge of the next one, from the left), rowBottom, rowH }
+  function platformBoard(P, colorSpace) {
+    if (!plat) {
+      var d = app.documents.add(colorSpace, P.w, P.h);
+      plat = { doc: d, n: 1 };
+      d.artboards[0].name = "Platform 1";
+    } else {
+      var a0 = plat.doc.artboards[0].artboardRect, k = plat.n, off = k * (P.w + 400);
+      plat.doc.artboards.add([a0[0] + off, a0[1], a0[2] + off, a0[3]]);
+      plat.doc.artboards[k].name = "Platform " + (k + 1);
+      plat.n++;
+    }
+    plat.x = P.w - P.right;
+    plat.rowBottom = P.h - P.bottom;
+    plat.rowH = 0;
+  }
+  function slotFor(P, w, h, colorSpace) {
+    if (!plat) platformBoard(P, colorSpace);
+    if (plat.x - w < P.left) { // the row is full: the next one up
+      plat.rowBottom -= plat.rowH + P.gapY;
+      plat.x = P.w - P.right;
+      plat.rowH = 0;
+    }
+    if (plat.rowBottom - h < P.top) platformBoard(P, colorSpace); // the platform is full: another one
+    var slot = { left: plat.x - w, top: plat.rowBottom - h, board: plat.n - 1 };
+    plat.x -= w + P.gapX;
+    if (h > plat.rowH) plat.rowH = h;
+    return slot;
+  }
+  function toPlatform(doc, r) {
+    var P = JOB.platform, w = r.region[2], h = r.region[3];
+    app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+    var ab = doc.artboards[0].artboardRect;
+    // a mark exactly on the crystal's artboard, copied with it: where it lands tells where to move it
+    var markLayer = doc.layers.add();
+    var mark = markLayer.pathItems.rectangle(ab[1], ab[0], ab[2] - ab[0], ab[1] - ab[3]);
+    mark.filled = false; mark.stroked = false;
+    var slot = slotFor(P, w, h, doc.documentColorSpace);
+    var pd = plat.doc, layer = pd.layers[0];
+    var g = layer.groupItems.add();
+    g.name = pad(r.row) + " - " + safe(r.name);
+    // bottom layer and bottom item first, each put on top: the stacking stays as it was
+    for (var k = doc.layers.length - 1; k >= 0; k--) {
+      var L = doc.layers[k];
+      if (!L.visible) continue;
+      try { L.locked = false; } catch (e) {}
+      for (var j = L.pageItems.length - 1; j >= 0; j--) {
+        var it = L.pageItems[j];
+        try { if (it.parent !== L) continue; it.locked = false; it.duplicate(g, ElementPlacement.PLACEATBEGINNING); } catch (e) {}
+      }
+    }
+    var copied = g.pageItems[0]; // the mark (last layer added, so on top: copied last)
+    for (var q = 0; q < g.pageItems.length; q++) {
+      var gb = g.pageItems[q];
+      if (gb.typename === "PathItem" && !gb.filled && !gb.stroked && Math.abs((gb.geometricBounds[2] - gb.geometricBounds[0]) - (ab[2] - ab[0])) < 0.5) { copied = gb; break; }
+    }
+    var mb = copied.geometricBounds, pb = pd.artboards[slot.board].artboardRect;
+    g.translate((pb[0] + slot.left) - mb[0], (pb[1] - slot.top) - mb[1]);
+    try { copied.remove(); } catch (e) {}
+    notes.push("Row " + r.row + " on platform " + (slot.board + 1) + ".");
+  }
+  function savePlatform() {
+    if (!plat) return;
+    var name = safe(JOB.platformName || "PRINT AREA (PLATFORM)");
+    plat.doc.saveAs(new File(outDir.fsName + "/" + name + ".ai"), new IllustratorSaveOptions());
+    notes.push(plat.n + " platform" + (plat.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
   }
 
   // most of the item lies in one of the boxes (what the studio took out of the design: the logo,
@@ -386,6 +458,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
   for (var n = 0; n < JOB.rows.length; n++) {
     try { makeRow(JOB.rows[n]); done++; } catch (e) { notes.push("Row " + JOB.rows[n].row + ": " + e.message); }
   }
+  try { savePlatform(); } catch (e) { notes.push("The platform couldn't be saved (" + e.message + ")"); }
   for (var f in opened) { try { opened[f].close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} }
   app.userInteractionLevel = level;
   app.coordinateSystem = coords;
