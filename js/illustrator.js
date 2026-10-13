@@ -28,6 +28,13 @@ var OUTLINE_TEXT = JOB.outline !== false;
   var outDir = JOB.outDir ? new Folder(String(JOB.outDir).replace(/\\/g, "/")) : Folder.selectDialog("Crystal Studio: choose a folder for the finished .ai files");
   if (!outDir) return;
   if (!outDir.exists) outDir.create();
+  // started: Crystal Studio starts this script again when Illustrator was still opening and didn't
+  // run it; a second start of the same job stops here
+  if (JOB.outDir) {
+    var started = new File(outDir.fsName + "/_started.txt");
+    if (started.exists) return;
+    try { started.open("w"); started.write("started"); started.close(); } catch (e) {}
+  }
   var level = app.userInteractionLevel, coords = app.coordinateSystem;
   app.userInteractionLevel = UserInteractionLevel.DONTDISPLAYALERTS;
   app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM; // artboards and artwork in one system

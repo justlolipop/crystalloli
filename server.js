@@ -217,6 +217,34 @@ function illustratorExe() {
 // imported on another computer
 const ONLINE_ORIGINAL = /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/crystal\/library\/orig-[a-z0-9-]+\.pdf$/;
 
+// a file from the online database -> dest. Node.js first; when that can't connect (an antivirus or
+// a company network checking secure connections with its own certificate, which Node.js doesn't
+// trust), Windows' own downloader, which does.
+async function download(url, dest) {
+  let why;
+  try {
+    const res = await fetch(url, { signal: AbortSignal.timeout(60000) });
+    if (!res.ok) throw new Error(res.status + " " + res.statusText);
+    fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+    return;
+  } catch (e) {
+    why = (e.cause && (e.cause.code || e.cause.message)) || e.message || String(e);
+    if (/^\d{3} /.test(why)) throw new Error("download failed: " + why);
+  }
+  if (process.platform !== "win32") throw new Error("download failed: " + why);
+  const ps = `$ProgressPreference='SilentlyContinue'; [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -Uri $env:CS_URL -OutFile $env:CS_DEST -UseBasicParsing -TimeoutSec 60`;
+  const code = await new Promise((done) => {
+    const p = spawn("powershell", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", ps],
+      { stdio: "ignore", windowsHide: true, env: { ...process.env, CS_URL: url, CS_DEST: dest } });
+    p.on("error", () => done(-1));
+    p.on("exit", (c) => done(c));
+  });
+  if (code !== 0 || !fs.existsSync(dest) || !fs.statSync(dest).size) {
+    try { fs.unlinkSync(dest); } catch (e) {}
+    throw new Error("download failed (" + why + "; Windows couldn't download it either - is this PC online, or is an antivirus blocking it?)");
+  }
+}
+
 async function runInIllustrator(body) {
   const rows = Array.isArray(body.rows) ? body.rows : [];
   if (!rows.length) return { ok: false, error: "Nothing to make." };
@@ -250,9 +278,9 @@ async function runInIllustrator(body) {
         try {
           if (local && fs.existsSync(local)) fs.copyFileSync(local, dest);
           else if (url) {
-            const res = await fetch(url);
-            if (!res.ok) throw new Error("download failed: " + res.status + " " + res.statusText);
-            fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+            await download(url, dest);
+            // kept here too, so the next time it needn't be downloaded
+            if (local) { try { fs.mkdirSync(path.dirname(local), { recursive: true }); fs.copyFileSync(dest, local); } catch (e) {} }
           } else throw new Error("no copy of its .ai is kept (import the .ai again in Crystal Studio)");
           err = null;
           break;
@@ -288,7 +316,20 @@ async function runInIllustrator(body) {
   if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC.", folder: outDir };
   try { spawn(exe, [jsx], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) { return { ok: false, error: "Couldn't start Illustrator: " + e.message, folder: outDir }; }
   try { spawn(process.platform === "win32" ? "explorer" : "open", [outDir], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) {}
+  nudgeIllustrator(exe, jsx, outDir);
   return { ok: true, folder: outDir };
+}
+
+// Illustrator that wasn't open yet often starts on its Home screen without running the script it
+// was given. The script writes _started.txt first thing: while that hasn't appeared, the script is
+// handed to Illustrator again (now open, it runs it). A late first run still stops at _started.txt.
+function nudgeIllustrator(exe, jsx, outDir, tries = 0) {
+  if (tries >= 5) return;
+  setTimeout(() => {
+    if (fs.existsSync(path.join(outDir, "_started.txt")) || fs.existsSync(path.join(outDir, "_result.txt"))) return;
+    try { spawn(exe, [jsx], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) {}
+    nudgeIllustrator(exe, jsx, outDir, tries + 1);
+  }, tries ? 20000 : 25000);
 }
 
 // The online Crystal Studio (and the order website's preview, which is part of it) may ask this PC to
@@ -298,7 +339,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13j"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13l"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
