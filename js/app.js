@@ -3,7 +3,7 @@
 //   Canvas (middle)   the design for the current row, edited Canva-style
 //   Templates (below) your crystal .ai files, and the designs inside each one
 
-import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
+import { $, esc, debounce, toast, ask, askChoice, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13k";
+const VERSION = "2026-10-13o";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -599,9 +599,48 @@ $("saveDefault").onclick = async () => {
     setMaster(await store.saveMaster(look));
   } catch (e) { return toast(e.message, "bad"); }
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
+  // the other designs of the same .ai (A, B, C …): the same positions for them too, if wanted
+  // (a design of another size gets them stretched to its size)
+  const sibs = S.library.filter((x) => x.id !== it.id && x.file === it.file && x.source === "pdf");
+  let copied = 0;
+  if (sibs.length && await ask(`Use the same positions, sizes and look for the other ${sibs.length} design${sibs.length === 1 ? "" : "s"} of ${it.file} too (${sibs.map((x) => x.name).join(", ")})?`)) {
+    for (const sib of sibs) {
+      try { await copyDefault(it, sib); copied++; } catch (e) { toast(e.message, "bad"); }
+    }
+  }
   markDirty();
   await show(S.row);
-  toast(`Saved as the default for ${it.name}. The order website's preview updates by itself.`);
+  toast(`Saved as the default for ${it.name}${copied ? ` and ${copied} other design${copied === 1 ? "" : "s"} of ${it.file}` : ""}. The order website's preview updates by itself.`);
+};
+
+// one design's default (positions, sizes, look, logo spot) -> another design's default, stretched
+// to its size if it differs
+async function copyDefault(from, to) {
+  const kx = (to.width || from.width) / from.width, ky = (to.height || from.height) / from.height, k = Math.min(kx, ky);
+  const lay = { ...(to.layout || {}) }, look = { ...(to.look || {}) };
+  for (const [f, v] of Object.entries(from.layout || {})) {
+    if (!MASTER_FIELDS.includes(f) || !v) continue;
+    lay[f] = { ...v, left: v.left * kx, top: v.top * ky, fontSize: Math.round(v.fontSize * k * 100) / 100, maxW: Math.min(to.width || from.width, v.maxW * kx) };
+  }
+  for (const f of MASTER_FIELDS) if (from.look && from.look[f]) look[f] = from.look[f];
+  const box = from.logoBox, lb = box ? { l: box.l * kx, t: box.t * ky, r: box.r * kx, b: box.b * ky } : undefined;
+  Object.assign(to, await store.saveLibrary({ id: to.id, layout: lay, logoBox: lb, look }));
+  for (const key of Object.keys(S.edits)) if (key.endsWith("|lib|" + to.id)) delete S.edits[key];
+}
+
+// Copy default from…: this design takes the saved default of another design of the same .ai
+$("copyDefault").onclick = async () => {
+  const it = itemOf(S.key);
+  if (!it || it.source !== "pdf") return toast("Pick a crystal design (.ai) first.", "bad");
+  const sibs = S.library.filter((x) => x.id !== it.id && x.file === it.file && x.source === "pdf" && x.layout && MASTER_FIELDS.some((f) => x.layout[f]));
+  if (!sibs.length) return toast(`No other design of ${it.file} has a saved default yet: save one with Save as default template first.`, "bad");
+  const from = await askChoice(`Copy which design's default template to “${it.name}”? (positions, sizes, font, colour and the logo spot)`,
+    sibs.map((x) => ({ label: x.name, value: x })));
+  if (!from) return;
+  try { await copyDefault(from, it); } catch (e) { return toast(e.message, "bad"); }
+  markDirty();
+  await show(S.row);
+  toast(`${it.name} now uses the default of ${from.name}. The order website's preview updates by itself.`);
 };
 
 // Remove from background: while on, a click on the design takes the piece of artwork there (the
