@@ -226,7 +226,8 @@ async function runInIllustrator(body) {
   const d = new Date(), two = (n) => String(n).padStart(2, "0"); // this PC's own clock
   const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}`;
   // the folder: when, and for which order (to find it again among the others)
-  const tag = String(body.label || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  // (Windows: no \ / : * ? " < > | nor control characters, and no dot or space at the end)
+  const tag = String(body.label || "").replace(/[\\/:*?"<>|\u0000-\u001f]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80).replace(/[. ]+$/, "");
   const outDir = path.join(OUTPUT_DIR, tag ? `${stamp} - ${tag}` : stamp);
   fs.mkdirSync(outDir, { recursive: true });
   // open the exact .ai each design was imported from (the studio keeps a copy of it, here or in the
@@ -238,22 +239,30 @@ async function runInIllustrator(body) {
     const url = typeof r.originalUrl === "string" && ONLINE_ORIGINAL.test(r.originalUrl) ? r.originalUrl : null;
     delete r.path;
     const key = rel || url;
-    if (!key) continue;
+    if (!key) { r.originalError = "no copy of its .ai is kept (import the .ai again in Crystal Studio)"; continue; }
     if (!copies.has(key)) {
       const dir = path.join(outDir, "_templates");
       fs.mkdirSync(dir, { recursive: true });
       const dest = path.join(dir, path.basename(key, ".pdf").replace(/^orig-/, "") + " - " + r.file.replace(/\.(pdf|svg)$/i, ".ai"));
-      try {
-        if (local && fs.existsSync(local)) fs.copyFileSync(local, dest);
-        else if (url) {
-          const res = await fetch(url);
-          if (!res.ok) throw new Error(res.status + " " + res.statusText);
-          fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
-        } else throw new Error("not found");
-        copies.set(key, dest);
-      } catch (e) { copies.set(key, null); }
+      // a download that fails is tried once more (a slow connection, the storage busy a moment)
+      let err = null;
+      for (let attempt = 0; attempt < 2; attempt++) {
+        try {
+          if (local && fs.existsSync(local)) fs.copyFileSync(local, dest);
+          else if (url) {
+            const res = await fetch(url);
+            if (!res.ok) throw new Error("download failed: " + res.status + " " + res.statusText);
+            fs.writeFileSync(dest, Buffer.from(await res.arrayBuffer()));
+          } else throw new Error("no copy of its .ai is kept (import the .ai again in Crystal Studio)");
+          err = null;
+          break;
+        } catch (e) { err = e.message || String(e); }
+      }
+      copies.set(key, err ? { error: err } : dest);
     }
-    if (copies.get(key)) r.path = copies.get(key);
+    const got = copies.get(key);
+    if (typeof got === "string") r.path = got;
+    else r.originalError = (got && got.error) || "couldn't get it";
     // pictures added in the studio: saved next to the files, for Illustrator to place
     if (Array.isArray(r.images)) {
       r.images = r.images.map((im, i) => {
@@ -289,7 +298,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13i"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13j"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;

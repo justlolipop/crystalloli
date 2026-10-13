@@ -172,7 +172,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
   // editable, and it's saved as a new .ai. The original file isn't changed.
   function makeMaster(r) {
     var f = r.path ? new File(String(r.path).replace(/\\/g, "/")) : null;
-    if (!f || !f.exists) throw new Error("the original .ai of " + r.file + " wasn't found");
+    if (!f || !f.exists) throw new Error("the original .ai of " + r.file + " wasn't found" + (r.originalError ? ": " + r.originalError : ""));
     var doc = app.open(f), i;
     docCMYK = doc.documentColorSpace === DocumentColorSpace.CMYK;
     app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
