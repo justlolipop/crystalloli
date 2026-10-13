@@ -50,6 +50,32 @@ export function ask(msg, okLabel = "OK") {
   });
 }
 
+// A question with buttons to pick one of: [{ label, value }] -> the value, or null if cancelled
+export function askChoice(msg, choices) {
+  return new Promise((done) => {
+    const d = document.createElement("dialog");
+    d.innerHTML = `<p style="margin:0 0 10px;max-width:420px;line-height:1.5"></p><div class="dlg-actions" style="flex-wrap:wrap"></div>`;
+    d.querySelector("p").textContent = msg;
+    const row = d.querySelector(".dlg-actions");
+    let answer = null;
+    choices.forEach((c, i) => {
+      const b = document.createElement("button");
+      b.className = "primary";
+      b.textContent = c.label;
+      b.onclick = () => { answer = c.value; d.close(); };
+      row.appendChild(b);
+      if (!i) setTimeout(() => b.focus());
+    });
+    const no = document.createElement("button");
+    no.textContent = "Cancel";
+    no.onclick = () => d.close();
+    row.appendChild(no);
+    d.addEventListener("close", () => { d.remove(); done(answer); });
+    document.body.appendChild(d);
+    d.showModal();
+  });
+}
+
 // A question with a box to type in (password: the letters are hidden) -> the text, or null if cancelled
 export function askText(msg, { password = false, okLabel = "OK" } = {}) {
   return new Promise((done) => {
