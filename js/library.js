@@ -12,7 +12,7 @@
 
 import { loose } from "./util.js";
 import { useFont, findFont } from "./fonts.js";
-import { fitSize } from "./measure.js";
+import { fitSize, textWidth } from "./measure.js";
 import { store, fileUrl } from "./store.js";
 import { visibleTextItems, readableText, withoutLiveText } from "./pdf.js";
 import { pagePlan, drawOnly, serial, findElements } from "./elements.js";
@@ -183,7 +183,11 @@ async function masterTexts(item, row) {
     // saved with its width (Save as default template): it grows only as far as the saved text
     // was wide, so the crystal it was saved on comes back exactly as saved, and shorter words
     // fill that same width; longer ones shrink to fit the width it may take
-    const sw = s && s.w > 0 ? s.w : 0;
+    // (measured here from the saved words themselves when kept, the same way as below: the editor
+    // measures a little differently, which would let it grow a bit after every save)
+    const savedWidth = s && typeof s.text === "string" && s.text.trim()
+      ? Math.max(...s.text.split("\n").map((l) => textWidth(l, css, base, look.charSpacing || 0, look.scaleX || 1))) : 0;
+    const sw = savedWidth > 0 ? savedWidth : s && s.w > 0 ? s.w : 0;
     const sizeOf = (t) => {
       const lines = t.split("\n").length;
       const tall = Math.min(s && s.lines && lines > s.lines ? (grow * s.lines) / lines : grow, room > 0 ? room / (lines * lh) : grow);
