@@ -226,7 +226,7 @@ async function runInIllustrator(body) {
   const d = new Date(), two = (n) => String(n).padStart(2, "0"); // this PC's own clock
   const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}`;
   // the folder: when, and for which order (to find it again among the others)
-  const tag = String(body.label || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+  const tag = String(body.label || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
   const outDir = path.join(OUTPUT_DIR, tag ? `${stamp} - ${tag}` : stamp);
   fs.mkdirSync(outDir, { recursive: true });
   // open the exact .ai each design was imported from (the studio keeps a copy of it, here or in the
@@ -289,7 +289,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13e"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13f"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;

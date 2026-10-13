@@ -304,7 +304,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var mark = markLayer.pathItems.rectangle(ab[1], ab[0], ab[2] - ab[0], ab[1] - ab[3]);
     mark.filled = false; mark.stroked = false;
     var slot = slotFor(P, w, h, doc.documentColorSpace);
-    if (!plats[key]) { plats[key] = plat; plat.label = key; platKeys.push(key); }
+    if (!plats[key]) { plats[key] = plat; plat.label = key; plat.header = r.header || ""; plat.pieces = 0; platKeys.push(key); }
     var pd = plat.doc, layer = pd.layers[0];
     try { layer.locked = false; layer.visible = true; } catch (e) {}
     var g = layer.groupItems.add();
@@ -351,13 +351,15 @@ var OUTLINE_TEXT = JOB.outline !== false;
       try { if (m2) m2.remove(); } catch (e) {}
     }
     try { copied.remove(); } catch (e) {}
+    plat.pieces += qty;
     notes.push("Row " + r.row + ": " + qty + " on the platform.");
   }
   function savePlatform() {
     for (var i = 0; i < platKeys.length; i++) {
       var pl = plats[platKeys[i]];
       if (!pl.doc.pageItems.length) { try { pl.doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} notes.push("Nothing went on the platform of " + pl.label + "."); continue; }
-      var name = safe((JOB.platformName || "PRINT AREA (PLATFORM)") + (platKeys.length > 1 || pl.label !== "crystals" ? " - " + pl.label : "") + (JOB.label ? " - " + JOB.label : ""));
+      // named after the crystals' header (the school), their design and how many: "SK TAMAN SERI PAGI - 80-B DESIGN 2 x23"
+      var name = safe((pl.header || JOB.platformName || "PRINT AREA (PLATFORM)") + (pl.label !== "crystals" ? " - " + pl.label : "") + " x" + pl.pieces);
       pl.doc.saveAs(new File(outDir.fsName + "/" + name + ".ai"), new IllustratorSaveOptions());
       notes.push(pl.label + ": " + pl.n + " platform" + (pl.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
     }
