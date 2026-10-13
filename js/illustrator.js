@@ -202,6 +202,12 @@ var OUTLINE_TEXT = JOB.outline !== false;
       var bx = r.remove[i];
       boxes.push([L + bx.l - 1, T - bx.t + 1, L + bx.r + 1, T - bx.b - 1]);
     }
+    // never a box over a big part of the design (that would take the whole background with it)
+    var designArea = (R - L) * (T - B), kept = [];
+    for (i = 0; i < boxes.length; i++) if ((boxes[i][2] - boxes[i][0]) * (boxes[i][1] - boxes[i][3]) <= designArea * 0.35) kept.push(boxes[i]);
+    if (kept.length < boxes.length) notes.push("Row " + r.row + ": " + (boxes.length - kept.length) + " removed area(s) too big to remove safely were left.");
+    boxes = kept;
+    removeLimit = designArea * 0.35;
     if (boxes.length) step("couldn't remove the logo", function () { for (var k = 0; k < doc.layers.length; k++) removeIn(doc.layers[k], boxes); });
     // the studio's words and pictures on a layer of their own, on top: the .ai's own layers may be
     // locked or hidden
@@ -341,15 +347,17 @@ var OUTLINE_TEXT = JOB.outline !== false;
     if (w <= 0 || h <= 0) return 0;
     return (w * h) / Math.max(0.01, (vb[2] - vb[0]) * (vb[1] - vb[3]));
   }
+  var removeLimit = Infinity; // a piece bigger than this (a third of the design) is never removed whole
   function removeIn(container, boxes) {
     var items = container.pageItems, k, j;
     for (k = items.length - 1; k >= 0; k--) {
       try {
         var it = items[k];
         if (it.parent !== container) continue; // only its own items; groups are looked into below
-        var vb = it.visibleBounds, best = 0;
+        var vb = it.visibleBounds, best = 0, big = (vb[2] - vb[0]) * (vb[1] - vb[3]) > removeLimit;
         for (j = 0; j < boxes.length; j++) best = Math.max(best, mostlyIn(vb, boxes[j]));
-        if (best >= 0.8) { it.locked = false; it.remove(); continue; }
+        if (best >= 0.8 && !big) { it.locked = false; it.remove(); continue; }
+        if (big && it.typename === "GroupItem") { removeIn(it, boxes); continue; }
         if (best > 0 && it.typename === "GroupItem" && !it.clipped) removeIn(it, boxes);
       } catch (e) {}
     }
@@ -412,6 +420,18 @@ var OUTLINE_TEXT = JOB.outline !== false;
   }
   var splitNoted = false;
   function addStyled(layer, b, L, T) {
+    // a text of several lines: each line its own text, where the studio draws it (Illustrator's
+    // own paragraph style in the original .ai can keep it from centring the lines)
+    if (b.lines && b.lines.length > 1 && !b.angle) {
+      for (var q = 0; q < b.lines.length; q++) {
+        var one = {}, key;
+        for (key in b) one[key] = b[key];
+        one.lines = null;
+        one.text = b.lines[q].text; one.l = b.lines[q].l; one.t = b.lines[q].t; one.r = b.lines[q].r; one.b = b.lines[q].b;
+        if (String(one.text).replace(/\s+/g, "")) addStyled(layer, one, L, T);
+      }
+      return;
+    }
     var parts = [];
     if (b.outer && b.outerWidth > 0) parts.push(frame(layer, b, b.outer, b.outerWidth));
     if (b.stroke && b.strokeBehind) { parts.push(frame(layer, b, b.stroke, b.strokeWidth)); parts.push(frame(layer, b, null, 0)); }

@@ -315,7 +315,8 @@ function showTab(g) {
   }
   out.innerHTML = `
     <div class="vhead"><b id="vJenis"></b> <span id="vSub" class="muted"></span> <a href="#" class="edit" id="vEdit"
-      title="Open this design in Crystal Studio with these rows, to change it and save it as the default">✎ Edit in Crystal Studio</a></div>
+      title="Open this design in Crystal Studio with these rows, to change it and save it as the default">✎ Edit in Crystal Studio</a>
+      <a href="#" class="edit" id="vDefault" hidden title="This crystal was changed for this order only: throw that away and show it on the default template again (for everyone who sees this order)">↺ Use the default design</a></div>
     <div class="vrow">
       <button type="button" class="nav" id="vPrev" aria-label="Previous crystal">‹</button>
       <div class="stage" id="vStage"></div>
@@ -346,6 +347,24 @@ function showTab(g) {
   document.getElementById("vStage").onclick = (e) => { if (e.target.tagName === "IMG") setZoom(zoom >= ZOOMS[ZOOMS.length - 1] ? -9 : 1); };
   // ✎ Edit: Crystal Studio opens in a new tab with this design's rows, carried in the link itself
   // (after the #, so they never leave this computer)
+  // ↺: this crystal's own version for this order goes; it's drawn on the default template again
+  document.getElementById("vDefault").onclick = async (e) => {
+    e.preventDefault();
+    const sl = slides[at];
+    if (!sl || !sl.t || !order || !confirm("Show this crystal on the default template again? Its changes for this order are thrown away (for everyone who sees this order).")) return;
+    try {
+      const id = orderDesignId(order);
+      let d = null;
+      try { d = await store.loadDesign(id); } catch (err) { /* none */ }
+      const own = { ...((d && d.data && d.data.custom) || {}) };
+      delete own[rowKey(sl.g.jenis, sl.t.row)];
+      await store.saveDesign({ id, name: `Order ${order} — its own crystals`, data: { ...((d && d.data) || {}), order, custom: own } });
+      custom = own;
+      pics.clear();
+      smalls.clear();
+      show(allRows);
+    } catch (err) { alert("Couldn't change it: " + err.message); }
+  };
   document.getElementById("vEdit").onclick = (e) => {
     e.preventDefault();
     if (!CAN_EDIT) return;
@@ -379,6 +398,7 @@ async function draw() {
   document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "") +
     (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" : "") + (sl.t ? logoNote(sl.t.row) : "");
   document.getElementById("vEdit").hidden = !sl.it || !CAN_EDIT;
+  document.getElementById("vDefault").hidden = !(sl.t && CAN_EDIT && order && custom[rowKey(sl.g.jenis, sl.t.row)]);
   document.getElementById("vCap").textContent = sl.t ? [sl.t.row.category, caption(sl.t.row)].filter(Boolean).join(" · ") : "";
   document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
   const stage = document.getElementById("vStage");
