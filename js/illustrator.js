@@ -250,7 +250,10 @@ var OUTLINE_TEXT = JOB.outline !== false;
 
   function finish(doc, r) {
     if (OUTLINE_TEXT) for (var i = doc.textFrames.length - 1; i >= 0; i--) { try { doc.textFrames[i].createOutline(); } catch (e) {} }
-    if (JOB.platform) { toPlatform(doc, r); doc.close(SaveOptions.DONOTSAVECHANGES); return; }
+    if (JOB.platform) {
+      try { toPlatform(doc, r); doc.close(SaveOptions.DONOTSAVECHANGES); return; }
+      catch (e) { notes.push("Row " + r.row + ": saved as its own .ai instead (" + e.message + ")."); }
+    }
     var out = new File(outDir.fsName + "/" + pad(r.row) + " - " + safe(r.name) + ".ai");
     doc.saveAs(out, new IllustratorSaveOptions());
     if (!JOB.keepOpen) doc.close(SaveOptions.DONOTSAVECHANGES);
@@ -298,18 +301,30 @@ var OUTLINE_TEXT = JOB.outline !== false;
     mark.filled = false; mark.stroked = false;
     var slot = slotFor(P, w, h, doc.documentColorSpace);
     var pd = plat.doc, layer = pd.layers[0];
+    try { layer.locked = false; layer.visible = true; } catch (e) {}
     var g = layer.groupItems.add();
     g.name = pad(r.row) + " - " + safe(r.name);
-    // bottom layer and bottom item first, each put on top: the stacking stays as it was
+    // bottom layer and bottom item first, each put on top: the stacking stays as it was. Copied onto
+    // the platform's layer (Illustrator copies between documents onto a layer, not into a group),
+    // then moved into the crystal's group there.
+    var copies = 0, failed = 0, why = "";
     for (var k = doc.layers.length - 1; k >= 0; k--) {
       var L = doc.layers[k];
       if (!L.visible) continue;
       try { L.locked = false; } catch (e) {}
       for (var j = L.pageItems.length - 1; j >= 0; j--) {
         var it = L.pageItems[j];
-        try { if (it.parent !== L) continue; it.locked = false; it.duplicate(g, ElementPlacement.PLACEATBEGINNING); } catch (e) {}
+        try {
+          if (it.parent.typename !== "Layer") continue; // only the layer's own items (groups come whole)
+          try { it.locked = false; it.hidden = false; } catch (e) {}
+          var dup = it.duplicate(layer, ElementPlacement.PLACEATBEGINNING);
+          dup.move(g, ElementPlacement.PLACEATBEGINNING);
+          copies++;
+        } catch (e) { failed++; if (!why) why = e.message; }
       }
     }
+    notes.push("Row " + r.row + ": " + copies + " piece(s) copied onto the platform" + (failed ? ", " + failed + " couldn't be (" + why + ")" : "") + ".");
+    if (!copies) { try { g.remove(); } catch (e) {} throw new Error("nothing could be copied onto the platform" + (why ? " (" + why + ")" : "")); }
     var copied = g.pageItems[0]; // the mark (last layer added, so on top: copied last)
     for (var q = 0; q < g.pageItems.length; q++) {
       var gb = g.pageItems[q];
@@ -335,6 +350,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
   }
   function savePlatform() {
     if (!plat) return;
+    if (!plat.doc.pageItems.length) { try { plat.doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} notes.push("Nothing went on the platform."); return; }
     var name = safe(JOB.platformName || "PRINT AREA (PLATFORM)");
     plat.doc.saveAs(new File(outDir.fsName + "/" + name + ".ai"), new IllustratorSaveOptions());
     notes.push(plat.n + " platform" + (plat.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
