@@ -293,6 +293,12 @@ var OUTLINE_TEXT = JOB.outline !== false;
     if (h > plat.rowH) plat.rowH = h;
     return slot;
   }
+  var MARK = "__crystal_studio_place__";
+  // the mark copied with a crystal (by its name), or null
+  function markIn(g) {
+    for (var q = 0; q < g.pageItems.length; q++) { try { if (g.pageItems[q].name === MARK) return g.pageItems[q]; } catch (e) {} }
+    return null;
+  }
   function toPlatform(doc, r) {
     var P = JOB.platform, w = r.region[2], h = r.region[3];
     var key = String(r.design || r.file || "crystals");
@@ -303,6 +309,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var markLayer = doc.layers.add();
     var mark = markLayer.pathItems.rectangle(ab[1], ab[0], ab[2] - ab[0], ab[1] - ab[3]);
     mark.filled = false; mark.stroked = false;
+    mark.name = MARK; // found again by its name: a design can have its own invisible boxes of that size
     var slot = slotFor(P, w, h, doc.documentColorSpace);
     if (!plats[key]) { plats[key] = plat; plat.label = key; plat.header = r.header || ""; plat.pieces = 0; platKeys.push(key); }
     var pd = plat.doc, layer = pd.layers[0];
@@ -330,22 +337,15 @@ var OUTLINE_TEXT = JOB.outline !== false;
     }
     notes.push("Row " + r.row + ": " + copies + " piece(s) copied onto the platform" + (failed ? ", " + failed + " couldn't be (" + why + ")" : "") + ".");
     if (!copies) { try { g.remove(); } catch (e) {} throw new Error("nothing could be copied onto the platform" + (why ? " (" + why + ")" : "")); }
-    var copied = g.pageItems[0]; // the mark (last layer added, so on top: copied last)
-    for (var q = 0; q < g.pageItems.length; q++) {
-      var gb = g.pageItems[q];
-      if (gb.typename === "PathItem" && !gb.filled && !gb.stroked && Math.abs((gb.geometricBounds[2] - gb.geometricBounds[0]) - (ab[2] - ab[0])) < 0.5) { copied = gb; break; }
-    }
+    var copied = markIn(g);
+    if (!copied) throw new Error("its place on the platform couldn't be found");
     var mb = copied.geometricBounds, pb = pd.artboards[slot.board].artboardRect;
     g.translate((pb[0] + slot.left) - mb[0], (pb[1] - slot.top) - mb[1]);
     // its quantity: as many copies, each in the next place on the platform
     var qty = Math.max(1, Math.min(500, Math.round(+r.qty) || 1));
     for (var c = 1; c < qty; c++) {
       var s2 = slotFor(P, w, h, doc.documentColorSpace), g2 = g.duplicate(layer, ElementPlacement.PLACEATBEGINNING);
-      var m2 = null;
-      for (var q2 = 0; q2 < g2.pageItems.length; q2++) {
-        var it2 = g2.pageItems[q2];
-        if (it2.typename === "PathItem" && !it2.filled && !it2.stroked && Math.abs((it2.geometricBounds[2] - it2.geometricBounds[0]) - (ab[2] - ab[0])) < 0.5) { m2 = it2; break; }
-      }
+      var m2 = markIn(g2);
       var b2 = (m2 || g2).geometricBounds, p2 = pd.artboards[s2.board].artboardRect;
       g2.translate((p2[0] + s2.left) - b2[0], (p2[1] - s2.top) - b2[1]);
       try { if (m2) m2.remove(); } catch (e) {}
