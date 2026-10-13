@@ -288,7 +288,20 @@ async function runInIllustrator(body) {
   if (!exe) return { ok: false, error: "Illustrator wasn't found on this PC.", folder: outDir };
   try { spawn(exe, [jsx], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) { return { ok: false, error: "Couldn't start Illustrator: " + e.message, folder: outDir }; }
   try { spawn(process.platform === "win32" ? "explorer" : "open", [outDir], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) {}
+  nudgeIllustrator(exe, jsx, outDir);
   return { ok: true, folder: outDir };
+}
+
+// Illustrator that wasn't open yet often starts on its Home screen without running the script it
+// was given. The script writes _started.txt first thing: while that hasn't appeared, the script is
+// handed to Illustrator again (now open, it runs it). A late first run still stops at _started.txt.
+function nudgeIllustrator(exe, jsx, outDir, tries = 0) {
+  if (tries >= 5) return;
+  setTimeout(() => {
+    if (fs.existsSync(path.join(outDir, "_started.txt")) || fs.existsSync(path.join(outDir, "_result.txt"))) return;
+    try { spawn(exe, [jsx], { detached: true, stdio: "ignore" }).on("error", () => {}).unref(); } catch (e) {}
+    nudgeIllustrator(exe, jsx, outDir, tries + 1);
+  }, tries ? 20000 : 25000);
 }
 
 // The online Crystal Studio (and the order website's preview, which is part of it) may ask this PC to
@@ -298,7 +311,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13j"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13k"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
