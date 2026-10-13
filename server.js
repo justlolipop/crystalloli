@@ -270,7 +270,7 @@ async function runInIllustrator(body) {
   const platform = P && ["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"].every((k) => Number.isFinite(+P[k]) && +P[k] >= 0)
     ? Object.fromEntries(["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"].map((k) => [k, +P[k]])) : null;
   const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, outline: body.outline !== false && !rows.some((r) => r.master), rows,
-    ...(platform && rows.length > 1 ? { platform, keepOpen: true } : {}) };
+    ...(platform && rows.reduce((n, r) => n + (Math.round(+r.qty) || 1), 0) > 1 ? { platform, keepOpen: true } : {}) };
   const jsx = path.join(outDir, "_make.jsx");
   fs.writeFileSync(jsx, illustratorScript(job));
   const exe = illustratorExe();
@@ -287,7 +287,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13a"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13b"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;

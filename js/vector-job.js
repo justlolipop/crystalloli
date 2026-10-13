@@ -17,7 +17,7 @@ const hex = (c) => {
 // row up; margins and gaps as on the hand-made PRINT AREA (PLATFORM).ai (12 to a row, 2 rows; the left margin a little under the 740 measured, so 12 fit).
 export const PLATFORM = { w: 6048, h: 1728, left: 700, right: 276, top: 72, bottom: 184, gapX: 90, gapY: 92 };
 
-// list: [{ item, entry (as renderOffscreen takes it), name }] -> { job: { outline: false, rows }, without: [indexes] }
+// list: [{ item, entry (as renderOffscreen takes it), name, qty? }] -> { job: { outline: false, rows }, without: [indexes] }
 export async function vectorJob(list) {
   const rows = [], without = [];
   for (const [i, x] of list.entries()) {
@@ -31,8 +31,11 @@ export async function vectorJob(list) {
       row: rows.length + 1, file: it.file, original: it.original, originalUrl: fileUrl(it.original),
       page: it.page || 1, region: it.region || [0, 0, it.width, it.height], name: x.name,
       master: true, remove: await removedBoxes(it).catch(() => []), texts, images: await imagesOf(bare),
+      // how many of this crystal: as many copies of it on the print platform
+      qty: Math.max(1, Math.min(500, Math.round(+x.qty) || 1)),
     });
   }
   // more than one crystal: all on the print platform, as laid out by hand (PRINT AREA (PLATFORM).ai)
-  return { job: { outline: false, rows, ...(rows.length > 1 ? { platform: PLATFORM } : {}) }, without };
+  const pieces = rows.reduce((n, r) => n + r.qty, 0);
+  return { job: { outline: false, rows, ...(pieces > 1 ? { platform: PLATFORM } : {}) }, without };
 }

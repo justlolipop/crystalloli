@@ -253,7 +253,7 @@ async function generateAll(ai) {
       for (const f of files) {
         const scene = await libraryScene(f.c.it, f.c.t.row, columns), own = custom[rowKey(f.c.g.jenis, f.c.t.row)];
         const lg = await logoOn(f.c.it, f.c.t.row);
-        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: lg } : { scene, logo: lg }, name: f.name });
+        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: lg } : { scene, logo: lg }, name: f.name, qty: f.c.t.qty });
       }
       const { job, without } = await vectorJob(list);
       const svgs = [];

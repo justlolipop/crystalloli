@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13b";
+const VERSION = "2026-10-13c";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -837,13 +837,13 @@ async function openInIllustrator(all) {
     for (let k = 2; used.has(name); k++) name = name.replace(/( \(\d+\))?$/, ` (${k})`);
     used.add(name);
     const lg = await logoFor(key, r);
-    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images, logo: lg } : { scene: sc, logo: lg } });
+    files.push({ name, key, r, item: itemOf(key), entry: st ? { state: st, images: sc.images, logo: lg } : { scene: sc, logo: lg }, qty: +rw.qty || 1 });
   }
   if (!files.length) { bridge.cancel(); return toast("These rows have no crystal design to open.", "bad"); }
   // made from the original .ai in Illustrator (artwork and words editable); a design without one
   // goes as .svg (the artwork as a picture)
   toast("Preparing the Illustrator files…");
-  const { job, without } = await vectorJob(files.map((f) => ({ item: f.item, entry: f.entry, name: f.name })));
+  const { job, without } = await vectorJob(files.map((f) => ({ item: f.item, entry: f.entry, name: f.name, qty: f.qty })));
   const svgs = [];
   for (const i of without) {
     const f = files[i], p = await printImages(f.key, f.r);
