@@ -144,8 +144,13 @@ header.top { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .menu-list small { display: block; color: var(--mute); font-size: 12px; }
 
 /* templates */
-.sources { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 6px; scrollbar-width: thin; }
-.src { white-space: nowrap; }
+/* the imported files: one per row (name, how many designs, delete) */
+.sources { display: flex; flex-direction: column; gap: 2px; max-height: 320px; overflow-y: auto; padding-bottom: 6px; scrollbar-width: thin; }
+.src { display: flex; align-items: center; gap: 8px; padding: 6px 10px; border: 1px solid var(--line); border-radius: 8px; cursor: pointer; min-width: 0; overflow-wrap: anywhere; }
+.src:hover { background: var(--accsoft); }
+.src.on { border-color: var(--acc); background: var(--accsoft); }
+.src .tag { margin-left: auto; }
+.src .x { flex: none; }
 .src[aria-selected="true"] { background: var(--acc); color: var(--accfg); border-color: var(--acc); }
 .src.unscanned { border-style: dashed; color: var(--mute); }
 .tag { font-size: 11px; padding: 0 6px; border-radius: 999px; background: var(--bg); color: var(--mute); border: 1px solid var(--line); }
