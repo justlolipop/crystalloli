@@ -180,10 +180,22 @@ async function masterTexts(item, row) {
     // as big as fits: few words grow (up to GROW times the saved size) to fill the width, many
     // words shrink to fit it; never taller than the room down to the next text
     const grow = base * GROW;
+    // saved with its width (Save as default template): it grows only as far as the saved text
+    // was wide, so the crystal it was saved on comes back exactly as saved, and shorter words
+    // fill that same width; longer ones shrink to fit the width it may take
+    const sw = s && s.w > 0 ? s.w : 0;
     const sizeOf = (t) => {
       const lines = t.split("\n").length;
       const tall = Math.min(s && s.lines && lines > s.lines ? (grow * s.lines) / lines : grow, room > 0 ? room / (lines * lh) : grow);
-      return Math.max(4, Math.min(fitSize(t, css, grow, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
+      const fit = (from, w) => fitSize(t, css, from, look.charSpacing || 0, look.scaleX || 1, w, 4);
+      let size;
+      if (!sw) size = fit(grow, maxW);
+      else {
+        const atBase = fit(base, maxW);
+        size = atBase < base ? atBase : Math.max(base, fit(grow, Math.min(maxW, sw + 0.5)));
+      }
+      // never smaller than saved for lack of room: the saved place was chosen by hand
+      return Math.max(4, Math.min(size, sw && lines <= (s.lines || 1) ? Math.max(tall, base) : tall));
     };
     let size = sizeOf(text);
     // one long line that would shrink a lot: on two lines instead, split between words near the

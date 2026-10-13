@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13o";
+const VERSION = "2026-10-13p";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -582,7 +582,8 @@ $("saveDefault").onclick = async () => {
     // and as many lines: other rows' words only shrink when they're longer or have more lines
     const wide = (o.getScaledWidth ? o.getScaledWidth() : o.width * (o.scaleX || 1)) * 1.03 + (o.strokeWidth || 0) + 1;
     layout[f] = { left: o.left, top, originX: o.originX, textAlign: o.textAlign, fontSize: size,
-      maxW: Math.min(it.width, Math.max(o.data.maxW || 0, wide)), lines: Math.max(1, lines), angle: o.angle || 0, flipX: !!o.flipX };
+      maxW: Math.min(it.width, Math.max(o.data.maxW || 0, wide)), lines: Math.max(1, lines), angle: o.angle || 0, flipX: !!o.flipX,
+      w: Math.round(o.width * (o.scaleX || 1) * 100) / 100 };
     const family = String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim();
     look[f] = { ps: o.data.ps || null, family: o.data.ps ? "" : family, bold: o.fontWeight === "bold", italic: o.fontStyle === "italic",
       fill: o.fill, stroke: o.stroke || null, strokeWidth: o.strokeWidth || 0, paintFirst: o.paintFirst || "fill",
@@ -620,7 +621,7 @@ async function copyDefault(from, to) {
   const lay = { ...(to.layout || {}) }, look = { ...(to.look || {}) };
   for (const [f, v] of Object.entries(from.layout || {})) {
     if (!MASTER_FIELDS.includes(f) || !v) continue;
-    lay[f] = { ...v, left: v.left * kx, top: v.top * ky, fontSize: Math.round(v.fontSize * k * 100) / 100, maxW: Math.min(to.width || from.width, v.maxW * kx) };
+    lay[f] = { ...v, left: v.left * kx, top: v.top * ky, fontSize: Math.round(v.fontSize * k * 100) / 100, maxW: Math.min(to.width || from.width, v.maxW * kx), ...(v.w ? { w: v.w * k } : {}) };
   }
   for (const f of MASTER_FIELDS) if (from.look && from.look[f]) look[f] = from.look[f];
   const box = from.logoBox, lb = box ? { l: box.l * kx, t: box.t * ky, r: box.r * kx, b: box.b * ky } : undefined;
