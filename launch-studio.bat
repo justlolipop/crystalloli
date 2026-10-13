@@ -3,7 +3,18 @@ rem Started by the website's "Start Crystal Studio" button (the crystalstudio: l
 rem "Install Crystal Studio link.bat" / "Crystal Studio Setup.bat"): runs Crystal Studio in a small
 rem window, unless it already runs.
 cd /d "%~dp0"
-netstat -ano | findstr /r /c:":5190 .*LISTENING" >nul && exit /b 0
+rem Already running: left as it is, unless a newer Crystal Studio is online (then the running one
+rem stops, and this goes on to update and start it again)
+netstat -ano | findstr /r /c:":5190 .*LISTENING" >nul || goto start
+if not exist "%~dp0newer.ps1" exit /b 0
+if exist "%~dp0.git" exit /b 0
+powershell -NoProfile -ExecutionPolicy Bypass -File "%~dp0newer.ps1"
+if not errorlevel 3 exit /b 0
+echo A newer Crystal Studio is online: restarting it...
+taskkill /FI "WINDOWTITLE eq Crystal Studio - keep this open*" /T /F >nul 2>nul
+for /f "tokens=5" %%p in ('netstat -ano ^| findstr /r /c:":5190 .*LISTENING"') do taskkill /PID %%p /T /F >nul 2>nul
+ping -n 3 127.0.0.1 >nul
+:start
 rem Node.js: on the PATH, or where its installer puts it (Chrome may still have the PATH from
 rem before Node.js was installed)
 set "NODE=node"
