@@ -12,19 +12,29 @@ export function setFontFiles(map) { files = map && typeof map === "object" ? map
 export const fontLabel = (r) => `${r[1]} ${r[2]}`.trim();
 const cssName = (ps) => "ps_" + String(ps).replace(/[^A-Za-z0-9]/g, "_");
 
-// rows: [[postscriptName, family, style], ...] (webapp/templates/_fonts.json, written by the scan)
+// The only fonts offered for the crystal's words (the J&E crystal's three): header, award, name.
+export const CRYSTAL_FONTS = [["Teko-Bold", "Teko", "Bold"], ["Playball-Regular", "Playball", "Regular"], ["BritannicBold", "Britannic Bold", "Regular"]];
+
+// rows: [[postscriptName, family, style], ...] (the font list kept online / on this PC). Only the
+// three crystal fonts are offered in the font box, whatever else is in the list.
 export function setFontList(list) {
   rows = [];
   byPs = {};
   byLabel = {};
   for (const r of list || []) {
     if (!r || !r[0] || byPs[r[0]]) continue;
+    byPs[r[0]] = r; // other fonts still known by name (a design's own words), not offered
+  }
+  for (const base of CRYSTAL_FONTS) {
+    const r = byPs[base[0]] || base;
     rows.push(r);
     byPs[r[0]] = r;
     byLabel[fontLabel(r).toLowerCase()] = r;
   }
-  const dl = document.getElementById("fontList");
-  if (dl) dl.innerHTML = rows.map((r) => `<option value="${fontLabel(r).replace(/"/g, "&quot;")}"></option>`).join("");
+  const sel = document.getElementById("fFont");
+  if (sel && sel.tagName === "SELECT") {
+    sel.innerHTML = rows.map((r) => `<option value="${fontLabel(r).replace(/"/g, "&quot;")}">${fontLabel(r).replace(/</g, "&lt;")}</option>`).join("");
+  }
 }
 
 // What someone typed in the font box -> PostScript name (or null)
