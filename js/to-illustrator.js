@@ -10,7 +10,7 @@
 const BASE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? location.origin : "http://localhost:5190";
 export const START_LINK = "crystalstudio://open";
 // the oldest Crystal Studio (server.js BUILD) on the PC whose .ai this page can use
-export const MIN_BUILD = "2026-10-13g";
+export const MIN_BUILD = "2026-10-13h";
 
 // Call straight from a click (a window may only be opened then).
 // -> { send(files): the server's answer, or null when Crystal Studio isn't running here; cancel() }
@@ -44,13 +44,19 @@ export function illustratorWindow() {
   return {
     // like send, but Crystal Studio may still be starting (the click asked Windows to start it):
     // the window tries again every few seconds until it's up
-    async sendWhenUp(what, ms = 45000) {
-      let ready = await first;
+    // An older one answering may be on its way out (the click also asks it to update and restart):
+    // then it waits for the new one, rather than handing the job to the one being stopped.
+    async sendWhenUp(what, ms = 90000) {
+      const fresh = (r) => r && r.v >= 2 && String(r.build || "") >= MIN_BUILD;
+      let ready = await first, last = ready;
       const until = Date.now() + ms;
-      while (!ready && win && !win.closed && Date.now() < until) {
+      while (!fresh(ready) && win && !win.closed && Date.now() < until) {
+        if (ready) await new Promise((res) => setTimeout(res, 3000)); // the old one: give it time to go
         try { win.location.href = BASE + "/illustrator.html?try=" + Date.now(); } catch (e) { break; }
         ready = await waitFor("crystal-illustrator-ready", 3000);
+        if (ready) last = ready;
       }
+      ready = fresh(ready) ? ready : last;
       return ready ? this.deliverTo(ready, what) : null;
     },
     async send(what) {
