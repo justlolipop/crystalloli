@@ -150,8 +150,8 @@ export function guessLayout(item) {
   return out;
 }
 
-// how much bigger than its saved size a short text may get (it fills the width it has)
-const GROW = 1.3;
+// how much bigger than its saved size a short text may get: not at all
+const GROW = 1; // never bigger than saved (asked for: no auto zoom); long words still shrink
 
 // the 3 master texts for one Excel row on this design. Each shrinks to fit: as wide as the design
 // allows, and no taller than the room down to the next text (the last one: to near the bottom).
