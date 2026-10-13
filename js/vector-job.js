@@ -30,7 +30,10 @@ export async function vectorJob(list) {
     rows.push({
       row: rows.length + 1, file: it.file, original: it.original, originalUrl: fileUrl(it.original),
       page: it.page || 1, region: it.region || [0, 0, it.width, it.height], name: x.name,
-      master: true, remove: await removedBoxes(it).catch(() => []), texts, images: await imagesOf(bare),
+      // what was taken out of the design — never an area over a big part of it (Illustrator would
+      // take the whole background with it)
+      master: true, remove: (await removedBoxes(it).catch(() => [])).filter((b) => (b.r - b.l) * (b.b - b.t) <= it.width * it.height * 0.35),
+      texts, images: await imagesOf(bare),
       // how many of this crystal: as many copies of it on the print platform
       qty: Math.max(1, Math.min(500, Math.round(+x.qty) || 1)),
     });

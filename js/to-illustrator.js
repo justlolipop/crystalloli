@@ -9,6 +9,8 @@
 
 const BASE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? location.origin : "http://localhost:5190";
 export const START_LINK = "crystalstudio://open";
+// the oldest Crystal Studio (server.js BUILD) on the PC whose .ai this page can use
+export const MIN_BUILD = "2026-10-13c";
 
 // Call straight from a click (a window may only be opened then).
 // -> { send(files): the server's answer, or null when Crystal Studio isn't running here; cancel() }
@@ -57,9 +59,11 @@ export function illustratorWindow() {
     async deliverTo(ready, what) {
       if (!ready) return null;
       // an older Crystal Studio on this PC (before it made crystals from their original .ai)
-      if (!Array.isArray(what) && what.job && what.job.rows && what.job.rows.length && !(ready.v >= 2)) {
+      // or older than the one this page needs (print platform, quantities, background kept): refused,
+      // as its .ai would come out wrong — it updates itself when it starts again
+      if (!Array.isArray(what) && what.job && what.job.rows && what.job.rows.length && (!(ready.v >= 2) || String(ready.build || "") < MIN_BUILD)) {
         try { win.close(); } catch (e) {}
-        return { ok: false, old: true, error: "Crystal Studio on this computer is an old version: close its black window, then click Open in Illustrator again (it updates itself when it starts)." };
+        return { ok: false, old: true, error: `Crystal Studio on this computer is an old version (${ready.build || "old"}, needs ${MIN_BUILD}): close its black window, then click Open in Illustrator again (it updates itself when it starts).` };
       }
       const r = await deliver(what);
       if (r) r.build = ready.build || "old"; // which Crystal Studio answered
