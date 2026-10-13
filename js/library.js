@@ -150,6 +150,9 @@ export function guessLayout(item) {
   return out;
 }
 
+// how much bigger than its saved size a short text may get (it fills the width it has)
+const GROW = 1.3;
+
 // the 3 master texts for one Excel row on this design. Each shrinks to fit: as wide as the design
 // allows, and no taller than the room down to the next text (the last one: to near the bottom).
 async function masterTexts(item, row) {
@@ -176,8 +179,11 @@ async function masterTexts(item, row) {
     const lines = text.split("\n").length, lh = (look.lineHeight || 1) * 1.13;
     // saved by hand: kept as saved, smaller only for more lines than it had; else no taller than the
     // room down to the next text
-    const tall = s && s.lines ? (lines > s.lines ? (base * s.lines) / lines : base) : room > 0 ? room / (lines * lh) : base;
-    const size = Math.max(4, Math.min(fitSize(text, css, base, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
+    // as big as fits: few words grow (up to GROW times the saved size) to fill the width, many
+    // words shrink to fit it; never taller than the room down to the next text
+    const grow = base * GROW;
+    const tall = Math.min(s && s.lines && lines > s.lines ? (grow * s.lines) / lines : grow, room > 0 ? room / (lines * lh) : grow);
+    const size = Math.max(4, Math.min(fitSize(text, css, grow, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
     let top = s ? s.top : g.top;
     // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
     const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;

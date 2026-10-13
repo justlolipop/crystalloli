@@ -311,8 +311,21 @@ var OUTLINE_TEXT = JOB.outline !== false;
     }
     var mb = copied.geometricBounds, pb = pd.artboards[slot.board].artboardRect;
     g.translate((pb[0] + slot.left) - mb[0], (pb[1] - slot.top) - mb[1]);
+    // its quantity: as many copies, each in the next place on the platform
+    var qty = Math.max(1, Math.min(500, Math.round(+r.qty) || 1));
+    for (var c = 1; c < qty; c++) {
+      var s2 = slotFor(P, w, h, doc.documentColorSpace), g2 = g.duplicate(layer, ElementPlacement.PLACEATBEGINNING);
+      var m2 = null;
+      for (var q2 = 0; q2 < g2.pageItems.length; q2++) {
+        var it2 = g2.pageItems[q2];
+        if (it2.typename === "PathItem" && !it2.filled && !it2.stroked && Math.abs((it2.geometricBounds[2] - it2.geometricBounds[0]) - (ab[2] - ab[0])) < 0.5) { m2 = it2; break; }
+      }
+      var b2 = (m2 || g2).geometricBounds, p2 = pd.artboards[s2.board].artboardRect;
+      g2.translate((p2[0] + s2.left) - b2[0], (p2[1] - s2.top) - b2[1]);
+      try { if (m2) m2.remove(); } catch (e) {}
+    }
     try { copied.remove(); } catch (e) {}
-    notes.push("Row " + r.row + " on platform " + (slot.board + 1) + ".");
+    notes.push("Row " + r.row + ": " + qty + " on the platform.");
   }
   function savePlatform() {
     if (!plat) return;
