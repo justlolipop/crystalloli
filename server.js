@@ -339,7 +339,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13l"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13m"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
@@ -420,6 +420,24 @@ async function handleNativeRequest(req, res) {
         return send(res, 200, { ok: true, v: BRIDGE_VERSION, build: BUILD, origins: [...ONLINE_STUDIO, ...(Array.isArray(extra) ? extra : [])] }, corsHeaders(req));
       }
       if (m === "POST") return send(res, 200, openSvgsInIllustrator(await readBody(req)), corsHeaders(req));
+    }
+
+    // an original .ai the browser downloaded for this PC (when this PC's own downloads can't reach
+    // the online database, e.g. its DNS can't find it but the browser's own can): kept in library\
+    if (p === "/api/original") {
+      const o = req.headers.origin;
+      if (o && !/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return send(res, 403, { error: "Not allowed" });
+      const rel = url.searchParams.get("path") || "";
+      if (!/^library\/orig-[a-z0-9-]+\.pdf$/.test(rel)) return send(res, 400, { error: "Bad path" });
+      const file = path.join(APP_DIR, rel);
+      if (m === "GET") return send(res, 200, { have: fs.existsSync(file) && fs.statSync(file).size > 0 });
+      if (m === "POST") {
+        const buf = await readRaw(req, 200e6);
+        if (!buf.length) return send(res, 400, { error: "Empty" });
+        fs.mkdirSync(path.dirname(file), { recursive: true });
+        fs.writeFileSync(file, buf);
+        return send(res, 200, { ok: true });
+      }
     }
 
     if (p === "/api/illustrator" && m === "POST") {
