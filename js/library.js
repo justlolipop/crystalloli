@@ -190,7 +190,9 @@ async function masterTexts(item, row) {
     const sw = savedWidth > 0 ? savedWidth : s && s.w > 0 ? s.w : 0;
     const sizeOf = (t) => {
       const lines = t.split("\n").length;
-      const tall = Math.min(s && s.lines && lines > s.lines ? (grow * s.lines) / lines : grow, room > 0 ? room / (lines * lh) : grow);
+      // more lines than saved (a long text on two lines, the name with event_line_2): each as big as
+      // the room down to the next text allows, never bigger than saved
+      const tall = Math.min(grow, room > 0 ? room / (lines * lh) : grow);
       const fit = (from, w) => fitSize(t, css, from, look.charSpacing || 0, look.scaleX || 1, w, 4);
       let size;
       if (!sw) size = fit(grow, maxW);
@@ -202,17 +204,20 @@ async function masterTexts(item, row) {
       return Math.max(4, Math.min(size, sw && lines <= (s.lines || 1) ? Math.max(tall, base) : tall));
     };
     let size = sizeOf(text);
-    // one long line that would shrink a lot: on two lines instead, split between words near the
-    // middle, when that keeps it clearly bigger (not the name: its lines are the Excel's)
-    if (f !== "event_line_1" && !text.includes("\n") && /\s/.test(text.trim()) && size < base * 0.75) {
+    // one long line that would shrink: on two lines instead when that keeps it clearly bigger —
+    // split between words near the middle (a name: before BIN / BINTI / A/L / A/P when it has one)
+    if (!text.includes("\n") && /\s/.test(text.trim()) && size < base * 0.9) {
       const words = text.trim().split(/\s+/), half = text.trim().length / 2;
+      const join = (k) => words.slice(0, k).join(" ") + "\n" + words.slice(k).join(" ");
       let best = null;
-      for (let k = 1; k < words.length; k++) {
-        const a = words.slice(0, k).join(" "), d = Math.abs(a.length - half);
-        if (!best || d < best.d) best = { d, t: a + "\n" + words.slice(k).join(" ") };
+      const at = f === "event_line_1" ? words.findIndex((w, k) => k > 0 && /^(BIN|BINTI|BT|A\/L|A\/P|ANAK)$/i.test(w)) : -1;
+      if (at > 0) best = { t: join(at) };
+      else for (let k = 1; k < words.length; k++) {
+        const d = Math.abs(words.slice(0, k).join(" ").length - half);
+        if (!best || d < best.d) best = { d, t: join(k) };
       }
       const size2 = best ? sizeOf(best.t) : 0;
-      if (size2 > size * 1.15) { text = best.t; size = size2; }
+      if (size2 > size * 1.1) { text = best.t; size = size2; }
     }
     let top = s ? s.top : g.top;
     // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
