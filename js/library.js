@@ -852,6 +852,31 @@ export async function pieceAt(item, x, y) {
   return one ? [one.op] : null;
 }
 
+// Everything drawn mostly inside a box dragged on the design (pt, from its top-left): a whole logo
+// in one go (its ring, letters and picture are many pieces). Not the artwork spread over the whole
+// design, nor the cut line. -> drawing steps, or null
+export async function piecesIn(item, box) {
+  if (!item || !item.original) return null;
+  const { page } = await designPage(item);
+  const plan = pagePlan(page);
+  if (!plan) return null;
+  const [rx, ry, rw, rh] = item.region || [0, 0, item.width, item.height];
+  const b = { x0: rx + box.l, y0: ry + box.t, x1: rx + box.r, y1: ry + box.b }, A = rw * rh;
+  const hidden = new Set(item.hide || []);
+  const area = (e) => Math.max(0.01, (e.x1 - e.x0) * (e.y1 - e.y0));
+  const inBox = (e) => {
+    const w = Math.min(e.x1, b.x1) - Math.max(e.x0, b.x0), h = Math.min(e.y1, b.y1) - Math.max(e.y0, b.y0);
+    return w > 0 && h > 0 && (w * h) / area(e) >= 0.6;
+  };
+  const ops = new Set();
+  for (const e of findElements(plan.items, { x: rx, y: ry, w: rw, h: rh })) {
+    if (e.kind === "plate" || e.kind === "cut" || area(e) > A * 0.3 || !inBox(e)) continue;
+    for (const o of e.ops) if (!hidden.has(o)) ops.add(o);
+  }
+  for (const it of plan.items) if (!hidden.has(it.op) && area(it) <= A * 0.3 && inBox(it)) ops.add(it.op);
+  return ops.size ? [...ops] : null;
+}
+
 // Designs imported before the logo was taken out automatically (or before it found logos pasted as
 // a picture) still have it: they get the same clean-up once, without importing them again. What was
 // removed by hand stays removed; "Put back" afterwards isn't undone (cleaned marks it as done).

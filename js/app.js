@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
 import { schoolKey, logoPicker } from "./logos.js";
 import { fontsToShare, shareFonts } from "./font-share.js";
 import { newId } from "./libitem.js";
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-12h";
+const VERSION = "2026-10-13b";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -612,8 +612,8 @@ function setErasing(on) {
   erasing = on;
   $("eraseBtn").setAttribute("aria-pressed", on ? "true" : "false");
   $("eraseBtn").textContent = on ? "Done removing" : "Remove from background";
-  editor.pickPoint(on ? eraseAt : null);
-  if (on) toast("Click the logo (or anything else on the background) to remove it. Click Done removing when finished.");
+  editor.pickPoint(on ? eraseAt : null, on ? eraseBox : null);
+  if (on) toast("Drag a box around the logo to remove all of it (or click one piece). The school's logo then goes there. Click Done removing when finished.");
 }
 async function saveBackground(it, hide, note) {
   try {
@@ -621,7 +621,7 @@ async function saveBackground(it, hide, note) {
     Object.assign(it, await store.saveLibrary({ id: it.id, hide, background }));
   } catch (e) { return toast(e.message, "bad"); }
   await show(S.row);
-  if (erasing) editor.pickPoint(eraseAt);
+  if (erasing) editor.pickPoint(eraseAt, eraseBox);
   toast(note);
 }
 async function eraseAt(x, y) {
@@ -630,6 +630,20 @@ async function eraseAt(x, y) {
   const ops = await pieceAt(it, x, y).catch(() => null);
   if (!ops) return toast("Nothing to remove there (the plain background and the cut line stay).");
   await saveBackground(it, [...new Set([...(it.hide || []), ...ops])], "Removed. Click something else, or Done removing.");
+}
+// a box dragged around something (the template's own logo): all of it goes, and when it's about
+// the shape of a logo, the school's logo goes there from now on
+async function eraseBox(box) {
+  const it = itemOf(S.key);
+  if (!it || !it.original) return toast("Only designs imported from an .ai can have things removed.", "bad");
+  const ops = await piecesIn(it, box).catch(() => null);
+  if (!ops) return toast("Nothing to remove in that box (the plain background and the cut line stay).");
+  const w = box.r - box.l, h = box.b - box.t, logoLike = w / h > 0.4 && w / h < 2.5 && w > it.width * 0.06;
+  if (logoLike) {
+    try { Object.assign(it, await store.saveLibrary({ id: it.id, logoBox: box })); } catch (e) {}
+  }
+  await saveBackground(it, [...new Set([...(it.hide || []), ...ops])],
+    `Removed ${ops.length} piece${ops.length === 1 ? "" : "s"}.` + (logoLike ? " The school's logo goes there now." : "") + " Drag another box, or Done removing.");
 }
 $("eraseBtn").onclick = () => {
   const it = itemOf(S.key);

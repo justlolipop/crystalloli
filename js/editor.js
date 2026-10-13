@@ -72,10 +72,24 @@ export function initEditor(hooks) {
   cv.on("object:moving", snap);
   cv.on("mouse:up", () => { if (ed.guides.length) { ed.guides = []; cv.requestRenderAll(); } });
   // picking a spot on the design (see pickPoint): reported in pt from its top-left
+  // picking on the design (see pickPoint): a click is a spot, a drag is a box (drawn while dragging)
   cv.on("mouse:down", (e) => {
     if (!ed.pick) return;
-    const p = cv.getPointer(e.e);
-    ed.pick(p.x, p.y);
+    ed.drag = { a: cv.getPointer(e.e), b: null };
+  });
+  cv.on("mouse:move", (e) => {
+    if (!ed.pick || !ed.drag) return;
+    ed.drag.b = cv.getPointer(e.e);
+    cv.requestRenderAll();
+  });
+  cv.on("mouse:up", (e) => {
+    if (!ed.pick || !ed.drag) return;
+    const a = ed.drag.a, b = cv.getPointer(e.e);
+    ed.drag = null;
+    cv.requestRenderAll();
+    const big = Math.abs(b.x - a.x) > 6 / ed.zoom && Math.abs(b.y - a.y) > 6 / ed.zoom;
+    if (big && ed.pickBox) ed.pickBox({ l: Math.min(a.x, b.x), t: Math.min(a.y, b.y), r: Math.max(a.x, b.x), b: Math.max(a.y, b.y) });
+    else ed.pick(a.x, a.y);
   });
   cv.on("after:render", drawGuides);
   wireToolbar();
@@ -519,8 +533,11 @@ export async function layoutLike(scene) {
 }
 
 // While fn is set, a click on the design calls fn(x, y) instead of selecting anything; null stops.
-export function pickPoint(fn) {
+// fn(x, y): a click; box({ l, t, r, b }): a box dragged (pt, from the design's top-left)
+export function pickPoint(fn, box) {
   ed.pick = fn || null;
+  ed.pickBox = fn ? box || null : null;
+  ed.drag = null;
   cv.discardActiveObject();
   cv.selection = !fn;
   cv.defaultCursor = fn ? "crosshair" : "default";
@@ -584,6 +601,18 @@ function snap(e) {
 }
 
 function drawGuides() {
+  if (ed.drag && ed.drag.b) {
+    const ctx = cv.getContext(), v = cv.viewportTransform, a = ed.drag.a, b = ed.drag.b;
+    ctx.save();
+    ctx.transform(v[0], v[1], v[2], v[3], v[4], v[5]);
+    ctx.strokeStyle = "#e0338a";
+    ctx.fillStyle = "rgba(224,51,138,0.12)";
+    ctx.lineWidth = 1.5 / ed.zoom;
+    ctx.setLineDash([5 / ed.zoom, 3 / ed.zoom]);
+    ctx.fillRect(a.x, a.y, b.x - a.x, b.y - a.y);
+    ctx.strokeRect(a.x, a.y, b.x - a.x, b.y - a.y);
+    ctx.restore();
+  }
   if (!ed.guides.length) return;
   const ctx = cv.getContext();
   const v = cv.viewportTransform;
