@@ -236,8 +236,35 @@ var OUTLINE_TEXT = JOB.outline !== false;
       var g0 = layer.pageItems[layer.pageItems.length - 1].geometricBounds;
       notes.push("First text at x " + Math.round(g0[0]) + "-" + Math.round(g0[2]) + ", y " + Math.round(-g0[1]) + "-" + Math.round(-g0[3]) + " of a " + Math.round(r.region[2]) + " x " + Math.round(r.region[3]) + " artboard.");
     } catch (e) {}
+    step("couldn't fit the artboard to the design", function () { fitArtboard(doc, r); });
     finish(doc, r);
   }
+
+  // The design's box was found on a picture of the .ai (to a pt or two): the artboard is now set to
+  // the artwork's own vector edges (the cut line), exactly as drawn in the .ai, within that box
+  function fitArtboard(doc, r) {
+    app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
+    var a = doc.artboards[0].artboardRect, m = 4, u = null;
+    for (var k = 0; k < doc.layers.length; k++) {
+      var L = doc.layers[k];
+      if (!L.visible) continue;
+      for (var j = 0; j < L.pageItems.length; j++) {
+        var it = L.pageItems[j];
+        try {
+          if (it.parent.typename !== "Layer" || it.hidden) continue;
+          var g = it.geometricBounds;
+          if (outside(g, a)) continue;
+          u = u ? [Math.min(u[0], g[0]), Math.max(u[1], g[1]), Math.max(u[2], g[2]), Math.min(u[3], g[3])] : [g[0], g[1], g[2], g[3]];
+        } catch (e) {}
+      }
+    }
+    if (!u) return;
+    var f = [Math.max(u[0], a[0] - m), Math.min(u[1], a[1] + m), Math.min(u[2], a[2] + m), Math.max(u[3], a[3] - m)];
+    if (f[2] - f[0] < 10 || f[1] - f[3] < 10) return;
+    doc.artboards[0].artboardRect = f;
+    notes.push("Row " + r.row + ": size " + mm(f[2] - f[0]) + " x " + mm(f[1] - f[3]) + " mm, as in the .ai.");
+  }
+  function mm(pt) { return Math.round(pt / 72 * 25.4 * 10) / 10; }
 
   // a dark, filled, long and low shape along the bottom of the design (box: [l, t, r, b], y up):
   // the plate the crystal stands on in the template's picture
@@ -337,11 +364,12 @@ var OUTLINE_TEXT = JOB.outline !== false;
     return null;
   }
   function toPlatform(doc, r) {
-    var P = JOB.platform, w = r.region[2], h = r.region[3];
+    var P = JOB.platform;
     var key = String(r.design || r.file || "crystals");
     plat = plats[key] || null; // this design's platform (made by slotFor when there's none yet)
     app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
     var ab = doc.artboards[0].artboardRect;
+    var w = ab[2] - ab[0], h = ab[1] - ab[3]; // the crystal's exact size (fitArtboard)
     // a mark exactly on the crystal's artboard, copied with it: where it lands tells where to move it
     var markLayer = doc.layers.add();
     var mark = markLayer.pathItems.rectangle(ab[1], ab[0], ab[2] - ab[0], ab[1] - ab[3]);
