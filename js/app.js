@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13p";
+const VERSION = "2026-10-13q";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -583,7 +583,8 @@ $("saveDefault").onclick = async () => {
     const wide = (o.getScaledWidth ? o.getScaledWidth() : o.width * (o.scaleX || 1)) * 1.03 + (o.strokeWidth || 0) + 1;
     layout[f] = { left: o.left, top, originX: o.originX, textAlign: o.textAlign, fontSize: size,
       maxW: Math.min(it.width, Math.max(o.data.maxW || 0, wide)), lines: Math.max(1, lines), angle: o.angle || 0, flipX: !!o.flipX,
-      w: Math.round(o.width * (o.scaleX || 1) * 100) / 100 };
+      w: Math.round(o.width * (o.scaleX || 1) * 100) / 100, text: f === "event_line_1" && lines < String(o.text || "").split("\n").length
+        ? String(o.text || "").split("\n").slice(0, lines).join("\n") : String(o.text || "") };
     const family = String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim();
     look[f] = { ps: o.data.ps || null, family: o.data.ps ? "" : family, bold: o.fontWeight === "bold", italic: o.fontStyle === "italic",
       fill: o.fill, stroke: o.stroke || null, strokeWidth: o.strokeWidth || 0, paintFirst: o.paintFirst || "fill",
