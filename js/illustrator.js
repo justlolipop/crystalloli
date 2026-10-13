@@ -204,6 +204,8 @@ var OUTLINE_TEXT = JOB.outline !== false;
         try { if (!outside(doc.textFrames[k].visibleBounds, box)) doc.textFrames[k].remove(); } catch (e) {}
       }
     });
+    // the stand under the crystal (a dark bar along the bottom of the design): not printed
+    step("couldn't remove the stand below", function () { removeStand(doc, box); });
     var boxes = [];
     for (i = 0; i < (r.remove || []).length; i++) {
       var bx = r.remove[i];
@@ -235,6 +237,34 @@ var OUTLINE_TEXT = JOB.outline !== false;
       notes.push("First text at x " + Math.round(g0[0]) + "-" + Math.round(g0[2]) + ", y " + Math.round(-g0[1]) + "-" + Math.round(-g0[3]) + " of a " + Math.round(r.region[2]) + " x " + Math.round(r.region[3]) + " artboard.");
     } catch (e) {}
     finish(doc, r);
+  }
+
+  // a dark, filled, long and low shape along the bottom of the design (box: [l, t, r, b], y up):
+  // the plate the crystal stands on in the template's picture
+  function removeStand(doc, box) {
+    var w = box[2] - box[0], h = box[1] - box[3], gone = 0;
+    for (var k = doc.pathItems.length - 1; k >= 0; k--) {
+      var p = doc.pathItems[k];
+      try {
+        if (!p.filled || p.clipping || p.locked || p.hidden) continue;
+        var g = p.geometricBounds, pw = g[2] - g[0], ph = g[1] - g[3];
+        if (outside(g, box) || pw < w * 0.4 || ph > h * 0.15 || pw < ph * 4) continue;
+        if (g[1] > box[3] + h * 0.25) continue; // not in the bottom quarter
+        if (!dark(p.fillColor)) continue;
+        p.remove();
+        gone++;
+      } catch (e) {}
+    }
+    if (gone) notes.push("The stand below the crystal was left out.");
+  }
+  function dark(c) {
+    try {
+      if (c.typename === "CMYKColor") return c.black >= 80 || (c.cyan + c.magenta + c.yellow + c.black >= 260 && c.black >= 50);
+      if (c.typename === "RGBColor") return c.red < 70 && c.green < 70 && c.blue < 70;
+      if (c.typename === "GrayColor") return c.gray >= 80;
+      if (c.typename === "SpotColor") return dark(c.spot.color);
+    } catch (e) {}
+    return false;
   }
 
   function outside(vb, b) { return vb[2] < b[0] || vb[0] > b[2] || vb[1] < b[3] || vb[3] > b[1]; }
