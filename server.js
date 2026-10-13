@@ -225,7 +225,9 @@ async function runInIllustrator(body) {
   }
   const d = new Date(), two = (n) => String(n).padStart(2, "0"); // this PC's own clock
   const stamp = `${d.getFullYear()}-${two(d.getMonth() + 1)}-${two(d.getDate())} ${two(d.getHours())}-${two(d.getMinutes())}-${two(d.getSeconds())}`;
-  const outDir = path.join(OUTPUT_DIR, stamp);
+  // the folder: when, and for which order (to find it again among the others)
+  const tag = String(body.label || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 80);
+  const outDir = path.join(OUTPUT_DIR, tag ? `${stamp} - ${tag}` : stamp);
   fs.mkdirSync(outDir, { recursive: true });
   // open the exact .ai each design was imported from (the studio keeps a copy of it, here or in the
   // online database), not a file of the same name in the template folder, which may be another version
@@ -270,7 +272,7 @@ async function runInIllustrator(body) {
   const platform = P && ["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"].every((k) => Number.isFinite(+P[k]) && +P[k] >= 0)
     ? Object.fromEntries(["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"].map((k) => [k, +P[k]])) : null;
   const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, outline: body.outline !== false && !rows.some((r) => r.master), rows,
-    ...(platform && rows.reduce((n, r) => n + (Math.round(+r.qty) || 1), 0) > 1 ? { platform, keepOpen: true } : {}) };
+    ...(platform && rows.reduce((n, r) => n + (Math.round(+r.qty) || 1), 0) > 1 ? { platform, keepOpen: true } : {}), ...(tag ? { label: tag } : {}) };
   const jsx = path.join(outDir, "_make.jsx");
   fs.writeFileSync(jsx, illustratorScript(job));
   const exe = illustratorExe();
@@ -287,7 +289,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13d"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-13f"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;

@@ -10,7 +10,7 @@
 const BASE = /^(localhost|127\.0\.0\.1)$/.test(location.hostname) ? location.origin : "http://localhost:5190";
 export const START_LINK = "crystalstudio://open";
 // the oldest Crystal Studio (server.js BUILD) on the PC whose .ai this page can use
-export const MIN_BUILD = "2026-10-13d";
+export const MIN_BUILD = "2026-10-13f";
 
 // Call straight from a click (a window may only be opened then).
 // -> { send(files): the server's answer, or null when Crystal Studio isn't running here; cancel() }
