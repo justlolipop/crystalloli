@@ -1046,12 +1046,12 @@ export async function extractLogos(file, progress) {
       // the words in reading order: line by line (close tops), left to right
       const ws = named[i].sort((a, b2) => (Math.abs(a.t - b2.t) < (a.b - a.t) * 0.5 ? a.l - b2.l : a.t - b2.t));
       const name = ws.map((wd) => wd.str).join(" ").replace(/\s+/g, " ").trim();
-      out.push({ data: c.canvas.toDataURL("image/png"), name, page: n, y: b.t, x: b.l });
+      out.push({ data: c.canvas.toDataURL("image/png"), name, size: w * h, page: n, y: b.t, x: b.l });
       c.canvas.width = c.canvas.height = 0;
     });
     full.canvas.width = full.canvas.height = 0;
   }
-  return out.map(({ data, name }) => ({ data, name }));
+  return out.map(({ data, name, size }) => ({ data, name, size }));
 }
 
 // the separate pictures drawn on a page (px): ink (not white, not see-through) joined up when a

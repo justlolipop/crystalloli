@@ -96,3 +96,36 @@ export function logoPicker({ logo, school }, list) {
   pick.count = Array.isArray(list) ? list.length : 0;
   return pick;
 }
+
+// The same logo more than once (in a big .ai, or imported twice): kept once, the biggest copy (the
+// sharpest), with a name if any copy had one. Logos compare by a small fingerprint of the picture
+// (16 x 16 grey, each pixel brighter than the next or not) and by their shape.
+// list: [{ data (data URL), name, size? }] -> the same, without the doubles; and how many went
+export async function withoutDoubles(list) {
+  const prints = await Promise.all(list.map((x) => fingerprint(x.data).catch(() => null)));
+  const keep = [];
+  list.forEach((x, i) => {
+    const p = prints[i];
+    // never two different schools' logos (crests can look alike that small): only the same name, or no name
+    const sameSchool = (k) => !x.name || !k.x.name || schoolKey(x.name) === schoolKey(k.x.name);
+    const twin = p && keep.find((k) => k.p && sameSchool(k) && Math.abs(k.p.ratio - p.ratio) < 0.12 && distance(k.p.bits, p.bits) <= 40);
+    if (!twin) { keep.push({ x, p }); return; }
+    const big = (x.size || 0) > (twin.x.size || 0) ? x : twin.x;
+    twin.x = { ...big, name: big.name || x.name || twin.x.name };
+  });
+  return { list: keep.map((k) => k.x), dropped: list.length - keep.length };
+}
+async function fingerprint(src) {
+  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  const c = document.createElement("canvas");
+  c.width = 17; c.height = 16;
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.fillStyle = "#ffffff"; x.fillRect(0, 0, 17, 16);
+  x.drawImage(img, 0, 0, 17, 16);
+  const d = x.getImageData(0, 0, 17, 16).data, grey = (i) => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
+  const bits = [];
+  // brighter than the next pixel by a clear step (tiny differences are only how it was shrunk)
+  for (let y = 0; y < 16; y++) for (let k = 0; k < 16; k++) bits.push(grey((y * 17 + k) * 4) > grey((y * 17 + k + 1) * 4) + 10 ? 1 : 0);
+  return { bits, ratio: (img.naturalWidth || 1) / (img.naturalHeight || 1) };
+}
+const distance = (a, b) => a.reduce((n, v, i) => n + (v !== b[i] ? 1 : 0), 0);

@@ -7,7 +7,7 @@ import { $, esc, debounce, toast, ask, askText, safeName, downloadBlob, download
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
-import { schoolKey, logoPicker } from "./logos.js";
+import { schoolKey, logoPicker, withoutDoubles } from "./logos.js";
 import { fontsToShare, shareFonts } from "./font-share.js";
 import { newId } from "./libitem.js";
 import { illustratorScript } from "./illustrator.js";
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13g";
+const VERSION = "2026-10-13h";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1074,7 +1074,7 @@ async function pictureLogo(f) {
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return { data: c.toDataURL("image/png"), name: f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim() };
+    return { data: c.toDataURL("image/png"), name: f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim(), size: w * h };
   } finally { URL.revokeObjectURL(url); }
 }
 // many files at once: .ai / .pdf (every logo in them cut out) and pictures (one logo each)
@@ -1095,11 +1095,14 @@ $("logosFile").onchange = async (e) => {
       }
     } catch (err) { bad.push(`${f.name}: ${err.message}`); }
   }
+  // the same logo twice: once, the biggest copy
+  const { list: once, dropped } = await withoutDoubles(found);
   // new ones first, to check them
-  logoEdit.list.unshift(...found.map((x) => ({ id: newId(), name: x.name, data: x.data })));
+  logoEdit.list.unshift(...once.map((x) => ({ id: newId(), name: x.name, data: x.data })));
   renderLogos();
-  const unnamed = found.filter((x) => !x.name).length;
-  toast(`Found ${found.length} logo${found.length === 1 ? "" : "s"} in ${files.length} file${files.length === 1 ? "" : "s"}.` +
+  const unnamed = once.filter((x) => !x.name).length;
+  toast(`Found ${once.length} logo${once.length === 1 ? "" : "s"} in ${files.length} file${files.length === 1 ? "" : "s"}.` +
+    (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
     (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : " Check the names, then Save.") +
     (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !found.length ? "bad" : "");
 };
