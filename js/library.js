@@ -160,7 +160,7 @@ async function masterTexts(item, row) {
   const tops = MASTER_FIELDS.map((f) => (saved[f] ? saved[f].top : guess[f].top));
   const texts = [];
   for (const [i, f] of MASTER_FIELDS.entries()) {
-    const text = fieldValue(row, f);
+    let text = fieldValue(row, f);
     if (!text.trim()) continue;
     const g = guess[f], s = saved[f];
     // its look: the master template's (Save as default template), as before
@@ -176,14 +176,28 @@ async function masterTexts(item, row) {
     const base = s ? s.fontSize : g.size, maxW = s ? s.maxW : g.maxW;
     const below = tops.filter((t, j) => j !== i && t > tops[i] + 1);
     const room = (below.length ? Math.min(...below) : item.height * 0.92) - tops[i] - item.height * 0.01;
-    const lines = text.split("\n").length, lh = (look.lineHeight || 1) * 1.13;
-    // saved by hand: kept as saved, smaller only for more lines than it had; else no taller than the
-    // room down to the next text
+    const lh = (look.lineHeight || 1) * 1.13;
     // as big as fits: few words grow (up to GROW times the saved size) to fill the width, many
     // words shrink to fit it; never taller than the room down to the next text
     const grow = base * GROW;
-    const tall = Math.min(s && s.lines && lines > s.lines ? (grow * s.lines) / lines : grow, room > 0 ? room / (lines * lh) : grow);
-    const size = Math.max(4, Math.min(fitSize(text, css, grow, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
+    const sizeOf = (t) => {
+      const lines = t.split("\n").length;
+      const tall = Math.min(s && s.lines && lines > s.lines ? (grow * s.lines) / lines : grow, room > 0 ? room / (lines * lh) : grow);
+      return Math.max(4, Math.min(fitSize(t, css, grow, look.charSpacing || 0, look.scaleX || 1, maxW, 4), tall));
+    };
+    let size = sizeOf(text);
+    // one long line that would shrink a lot: on two lines instead, split between words near the
+    // middle, when that keeps it clearly bigger (not the name: its lines are the Excel's)
+    if (f !== "event_line_1" && !text.includes("\n") && /\s/.test(text.trim()) && size < base * 0.75) {
+      const words = text.trim().split(/\s+/), half = text.trim().length / 2;
+      let best = null;
+      for (let k = 1; k < words.length; k++) {
+        const a = words.slice(0, k).join(" "), d = Math.abs(a.length - half);
+        if (!best || d < best.d) best = { d, t: a + "\n" + words.slice(k).join(" ") };
+      }
+      const size2 = best ? sizeOf(best.t) : 0;
+      if (size2 > size * 1.15) { text = best.t; size = size2; }
+    }
     let top = s ? s.top : g.top;
     // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
     const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
