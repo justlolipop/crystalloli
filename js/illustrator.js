@@ -341,6 +341,10 @@ var OUTLINE_TEXT = JOB.outline !== false;
     if (!copied) throw new Error("its place on the platform couldn't be found");
     var mb = copied.geometricBounds, pb = pd.artboards[slot.board].artboardRect;
     g.translate((pb[0] + slot.left) - mb[0], (pb[1] - slot.top) - mb[1]);
+    // the mark, the crystal's own box, clips it: bits of the designs next to it in the original .ai
+    // (grouped with it, or only partly outside it) don't show on the platform
+    var clipped = false;
+    try { copied.move(g, ElementPlacement.PLACEATBEGINNING); copied.clipping = true; g.clipped = true; clipped = true; } catch (e) { notes.push("Row " + r.row + ": couldn't clip it to its box (" + e.message + ")."); }
     // its quantity: as many copies, each in the next place on the platform
     var qty = Math.max(1, Math.min(500, Math.round(+r.qty) || 1));
     for (var c = 1; c < qty; c++) {
@@ -348,9 +352,9 @@ var OUTLINE_TEXT = JOB.outline !== false;
       var m2 = markIn(g2);
       var b2 = (m2 || g2).geometricBounds, p2 = pd.artboards[s2.board].artboardRect;
       g2.translate((p2[0] + s2.left) - b2[0], (p2[1] - s2.top) - b2[1]);
-      try { if (m2) m2.remove(); } catch (e) {}
+      try { if (m2 && !clipped) m2.remove(); } catch (e) {}
     }
-    try { copied.remove(); } catch (e) {}
+    try { if (!clipped) copied.remove(); } catch (e) {}
     plat.pieces += qty;
     notes.push("Row " + r.row + ": " + qty + " on the platform.");
   }
