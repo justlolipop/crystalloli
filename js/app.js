@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13c";
+const VERSION = "2026-10-13d";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1065,19 +1065,43 @@ $("logosList").addEventListener("click", (e) => {
   if (x && x.file) logoEdit.drop.push(x.file);
   renderLogos();
 });
-$("logosFile").onchange = async (e) => {
-  const f = e.target.files[0];
-  e.target.value = "";
-  if (!f) return;
+// a picture file as one logo: PNG data URL (at most 800 px), named after the file
+async function pictureLogo(f) {
+  const url = URL.createObjectURL(f);
   try {
-    const found = await extractLogos(f, (m) => toast(m));
-    if (!found.length) return toast(`No logos found in ${f.name}.`, "bad");
-    // new ones first, to check them
-    logoEdit.list.unshift(...found.map((x) => ({ id: newId(), name: x.name, data: x.data })));
-    const unnamed = found.filter((x) => !x.name).length;
-    toast(`Found ${found.length} logo${found.length === 1 ? "" : "s"} in ${f.name}.` + (unnamed ? ` ${unnamed} had no name next to it: type the school's name under each.` : " Check the names, then Save."));
-    renderLogos();
-  } catch (err) { toast(err.message, "bad"); }
+    const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("not a picture")); i.src = url; });
+    const w = img.naturalWidth || 800, h = img.naturalHeight || 800, k = Math.min(1, 800 / Math.max(w, h));
+    const c = document.createElement("canvas");
+    c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
+    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    return { data: c.toDataURL("image/png"), name: f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim() };
+  } finally { URL.revokeObjectURL(url); }
+}
+// many files at once: .ai / .pdf (every logo in them cut out) and pictures (one logo each)
+$("logosFile").onchange = async (e) => {
+  const files = [...e.target.files];
+  e.target.value = "";
+  if (!files.length) return;
+  const found = [], bad = [];
+  for (const [i, f] of files.entries()) {
+    try {
+      if (/\.(ai|pdf)$/i.test(f.name)) {
+        const got = await extractLogos(f, (m) => toast(`${files.length > 1 ? `File ${i + 1} of ${files.length}: ` : ""}${m}`));
+        if (!got.length) bad.push(`${f.name}: no logos found`);
+        found.push(...got);
+      } else {
+        if (files.length > 1) toast(`File ${i + 1} of ${files.length}: ${f.name}…`);
+        found.push(await pictureLogo(f));
+      }
+    } catch (err) { bad.push(`${f.name}: ${err.message}`); }
+  }
+  // new ones first, to check them
+  logoEdit.list.unshift(...found.map((x) => ({ id: newId(), name: x.name, data: x.data })));
+  renderLogos();
+  const unnamed = found.filter((x) => !x.name).length;
+  toast(`Found ${found.length} logo${found.length === 1 ? "" : "s"} in ${files.length} file${files.length === 1 ? "" : "s"}.` +
+    (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : " Check the names, then Save.") +
+    (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !found.length ? "bad" : "");
 };
 $("logosClose").onclick = () => $("logosDlg").close();
 $("logosSave").onclick = async () => {
