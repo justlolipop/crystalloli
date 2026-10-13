@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13k";
+const VERSION = "2026-10-13n";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -599,9 +599,30 @@ $("saveDefault").onclick = async () => {
     setMaster(await store.saveMaster(look));
   } catch (e) { return toast(e.message, "bad"); }
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
+  // the other designs of the same .ai (A, B, C …): the same positions for them too, if wanted
+  // (a design of another size gets them stretched to its size)
+  const sibs = S.library.filter((x) => x.id !== it.id && x.file === it.file && x.source === "pdf");
+  let copied = 0;
+  if (sibs.length && await ask(`Use the same positions, sizes and look for the other ${sibs.length} design${sibs.length === 1 ? "" : "s"} of ${it.file} too (${sibs.map((x) => x.name).join(", ")})?`)) {
+    const saved = it.layout || layout, box = it.logoBox;
+    for (const sib of sibs) {
+      const kx = (sib.width || it.width) / it.width, ky = (sib.height || it.height) / it.height, k = Math.min(kx, ky);
+      const lay = { ...(sib.layout || {}) };
+      for (const [f, v] of Object.entries(saved)) {
+        if (!MASTER_FIELDS.includes(f) || !v) continue;
+        lay[f] = { ...v, left: v.left * kx, top: v.top * ky, fontSize: Math.round(v.fontSize * k * 100) / 100, maxW: Math.min(sib.width || it.width, v.maxW * kx) };
+      }
+      const lb = box ? { l: box.l * kx, t: box.t * ky, r: box.r * kx, b: box.b * ky } : undefined;
+      try {
+        Object.assign(sib, await store.saveLibrary({ id: sib.id, layout: lay, logoBox: lb, look: { ...(sib.look || {}), ...mine } }));
+        copied++;
+      } catch (e) { toast(e.message, "bad"); }
+      for (const key of Object.keys(S.edits)) if (key.endsWith("|lib|" + sib.id)) delete S.edits[key];
+    }
+  }
   markDirty();
   await show(S.row);
-  toast(`Saved as the default for ${it.name}. The order website's preview updates by itself.`);
+  toast(`Saved as the default for ${it.name}${copied ? ` and ${copied} other design${copied === 1 ? "" : "s"} of ${it.file}` : ""}. The order website's preview updates by itself.`);
 };
 
 // Remove from background: while on, a click on the design takes the piece of artwork there (the
