@@ -38,6 +38,27 @@
       try { return await (await fetch(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) })).json(); }
       catch (err) { return { ok: false, error: err.message }; }
     };
+    // the original .ai files: this browser downloads the ones this PC doesn't have yet and hands them
+    // over (this PC's own downloads can fail where the browser's work, e.g. its DNS can't find the
+    // online database)
+    if (job) {
+      const seen = new Set();
+      for (const row of job.rows) {
+        const rel = row && row.original, src = row && row.originalUrl;
+        if (typeof rel !== "string" || typeof src !== "string" || seen.has(rel)) continue;
+        seen.add(rel);
+        try {
+          const q = "/api/original?path=" + encodeURIComponent(rel);
+          const have = await (await fetch(q)).json();
+          if (have.have) continue;
+          sub.textContent = "Getting the original .ai files…";
+          const got = await fetch(src);
+          if (!got.ok) continue;
+          await fetch(q, { method: "POST", headers: { "Content-Type": "application/octet-stream" }, body: await got.blob() });
+        } catch (err) {} // then this PC tries to download it itself
+      }
+      sub.textContent = "Crystal Studio on this PC";
+    }
     const a = job ? await post("/api/illustrator", job) : null;
     const b = files.length ? await post("/api/illustrator/svgs", { files }) : null;
     const r = (!a ? b : !b ? a : { ok: a.ok && b.ok, folder: a.folder, error: a.error || b.error }) || { ok: false, error: "nothing to open" };
