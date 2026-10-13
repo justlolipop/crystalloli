@@ -18,7 +18,7 @@ const hex = (c) => {
 export const PLATFORM = { w: 6048, h: 1728, left: 700, right: 276, top: 72, bottom: 184, gapX: 90, gapY: 92 };
 
 // list: [{ item, entry (as renderOffscreen takes it), name, qty? }] -> { job: { outline: false, rows }, without: [indexes] }
-export async function vectorJob(list) {
+export async function vectorJob(list, label) {
   const rows = [], without = [];
   for (const [i, x] of list.entries()) {
     const it = x.item;
@@ -36,9 +36,12 @@ export async function vectorJob(list) {
       texts, images: await imagesOf(bare),
       // how many of this crystal: as many copies of it on the print platform
       qty: Math.max(1, Math.min(500, Math.round(+x.qty) || 1)),
+      // its design (jenis plak): each design gets its own platform file
+      design: String(x.design || it.name || "").replace(/^\s*(DTF\s+)?CRYSTAL\s*\/\s*/i, "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60),
     });
   }
   // more than one crystal: all on the print platform, as laid out by hand (PRINT AREA (PLATFORM).ai)
   const pieces = rows.reduce((n, r) => n + r.qty, 0);
-  return { job: { outline: false, rows, ...(pieces > 1 ? { platform: PLATFORM } : {}) }, without };
+  const tag = String(label || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 40);
+  return { job: { outline: false, rows, ...(pieces > 1 ? { platform: PLATFORM } : {}), ...(tag ? { label: tag } : {}) }, without };
 }

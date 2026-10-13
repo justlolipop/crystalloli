@@ -253,9 +253,9 @@ async function generateAll(ai) {
       for (const f of files) {
         const scene = await libraryScene(f.c.it, f.c.t.row, columns), own = custom[rowKey(f.c.g.jenis, f.c.t.row)];
         const lg = await logoOn(f.c.it, f.c.t.row);
-        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: lg } : { scene, logo: lg }, name: f.name, qty: f.c.t.qty });
+        list.push({ item: f.c.it, entry: own ? { state: own, images: scene.images, logo: lg } : { scene, logo: lg }, name: f.name, qty: f.c.t.qty, design: f.c.g.jenis });
       }
-      const { job, without } = await vectorJob(list);
+      const { job, without } = await vectorJob(list, order);
       const svgs = [];
       for (const i of without) svgs.push({ name: files[i].name, svg: await picture(files[i].c.it, files[i].c.g.jenis, files[i].c.t.row, 300, true) });
       say(everWorked() ? "Opening in Illustrator…" : "Starting Crystal Studio on this computer… (if Chrome asks “Open …?”, choose Open and tick Always allow)");

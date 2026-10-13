@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13e";
+const VERSION = "2026-10-13f";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -843,7 +843,7 @@ async function openInIllustrator(all) {
   // made from the original .ai in Illustrator (artwork and words editable); a design without one
   // goes as .svg (the artwork as a picture)
   toast("Preparing the Illustrator files…");
-  const { job, without } = await vectorJob(files.map((f) => ({ item: f.item, entry: f.entry, name: f.name, qty: f.qty })));
+  const { job, without } = await vectorJob(files.map((f) => ({ item: f.item, entry: f.entry, name: f.name, qty: f.qty, design: (S.rows[f.r] || {}).jenis_plak })), S.order || S.sourceName);
   const svgs = [];
   for (const i of without) {
     const f = files[i], p = await printImages(f.key, f.r);

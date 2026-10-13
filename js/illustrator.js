@@ -262,7 +262,9 @@ var OUTLINE_TEXT = JOB.outline !== false;
   // Many crystals: all on the print platform (one artboard the size of the printer's bed, more
   // artboards when they don't fit), as laid out by hand: from the bottom right, leftwards, then the
   // next row up; gaps and margins from JOB.platform (pt).
-  var plat = null; // { doc, n (artboards), x (right edge of the next one, from the left), rowBottom, rowH }
+  // one platform file per design (its own tab in Illustrator), like the hand-made ones
+  var plat = null; // the current one: { doc, n (artboards), x (right edge of the next one, from the left), rowBottom, rowH, label }
+  var plats = {}, platKeys = [];
   function platformBoard(P, colorSpace) {
     if (!plat) {
       var d = app.documents.add(colorSpace, P.w, P.h);
@@ -293,6 +295,8 @@ var OUTLINE_TEXT = JOB.outline !== false;
   }
   function toPlatform(doc, r) {
     var P = JOB.platform, w = r.region[2], h = r.region[3];
+    var key = String(r.design || r.file || "crystals");
+    plat = plats[key] || null; // this design's platform (made by slotFor when there's none yet)
     app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
     var ab = doc.artboards[0].artboardRect;
     // a mark exactly on the crystal's artboard, copied with it: where it lands tells where to move it
@@ -300,6 +304,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var mark = markLayer.pathItems.rectangle(ab[1], ab[0], ab[2] - ab[0], ab[1] - ab[3]);
     mark.filled = false; mark.stroked = false;
     var slot = slotFor(P, w, h, doc.documentColorSpace);
+    if (!plats[key]) { plats[key] = plat; plat.label = key; platKeys.push(key); }
     var pd = plat.doc, layer = pd.layers[0];
     try { layer.locked = false; layer.visible = true; } catch (e) {}
     var g = layer.groupItems.add();
@@ -349,11 +354,13 @@ var OUTLINE_TEXT = JOB.outline !== false;
     notes.push("Row " + r.row + ": " + qty + " on the platform.");
   }
   function savePlatform() {
-    if (!plat) return;
-    if (!plat.doc.pageItems.length) { try { plat.doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} notes.push("Nothing went on the platform."); return; }
-    var name = safe(JOB.platformName || "PRINT AREA (PLATFORM)");
-    plat.doc.saveAs(new File(outDir.fsName + "/" + name + ".ai"), new IllustratorSaveOptions());
-    notes.push(plat.n + " platform" + (plat.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
+    for (var i = 0; i < platKeys.length; i++) {
+      var pl = plats[platKeys[i]];
+      if (!pl.doc.pageItems.length) { try { pl.doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} notes.push("Nothing went on the platform of " + pl.label + "."); continue; }
+      var name = safe((JOB.platformName || "PRINT AREA (PLATFORM)") + (platKeys.length > 1 || pl.label !== "crystals" ? " - " + pl.label : "") + (JOB.label ? " - " + JOB.label : ""));
+      pl.doc.saveAs(new File(outDir.fsName + "/" + name + ".ai"), new IllustratorSaveOptions());
+      notes.push(pl.label + ": " + pl.n + " platform" + (pl.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
+    }
   }
 
   // most of the item lies in one of the boxes (what the studio took out of the design: the logo,
