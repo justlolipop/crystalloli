@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14b";
+const VERSION = "2026-10-14c";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1162,17 +1162,36 @@ async function importLogoFiles(all) {
       }
     } catch (err) { bad.push(`${f.name}: ${err.message}`); }
   }
-  // the same logo twice: once, the biggest copy
-  const { list: once, dropped } = await withoutDoubles(found);
-  // new ones first, to check them
-  logoEdit.list.unshift(...once.map((x) => ({ id: newId(), name: x.name, data: x.data })));
+  // the same logo twice (also one kept already): once, the biggest copy; and no crop marks
+  const fresh = found.map((x) => ({ id: newId(), name: x.name || "", data: x.data }));
+  const { dropped, junk } = await tidyLogos(fresh);
+  const once = logoEdit.list.filter((x) => fresh.includes(x));
   renderLogos();
   const unnamed = once.filter((x) => !x.name).length;
-  toast(`Found ${once.length} logo${once.length === 1 ? "" : "s"} in ${files.length} file${files.length === 1 ? "" : "s"}.` +
+  toast(`Found ${once.length} new logo${once.length === 1 ? "" : "s"} in ${files.length} file${files.length === 1 ? "" : "s"}.` +
     (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
+    (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
     (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : " Check the names, then Save.") +
     (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !found.length ? "bad" : "");
 }
+// the logos being changed plus new ones: repeats (also under another name) once, the biggest copy,
+// and shapes that aren't logos out; new ones first, to check them. -> { dropped, junk }
+async function tidyLogos(fresh = []) {
+  const all = [...fresh, ...logoEdit.list].map((x) => ({ ...x, src: x.data ? undefined : fileUrl(x.file) }));
+  const { list, dropped, junk } = await withoutDoubles(all);
+  for (const x of logoEdit.list) if (x.file && !list.some((k) => k.file === x.file)) logoEdit.drop.push(x.file);
+  const back = list.map(({ src, gone: g, junk: j, ...x }) => x);
+  logoEdit.list = back;
+  // the new ones as they are in the list (same objects), for the caller to count
+  fresh.splice(0, fresh.length, ...back.filter((x) => x.data && !x.file));
+  return { dropped, junk };
+}
+$("logosTidy").onclick = async () => {
+  toast("Looking for repeated logos…");
+  const { dropped, junk } = await tidyLogos();
+  renderLogos();
+  toast(dropped || junk ? `${dropped} repeat${dropped === 1 ? "" : "s"} and ${junk} shape${junk === 1 ? "" : "s"} that aren't logos removed (the biggest copy kept). Check, then Save.` : "No repeated logos found.");
+};
 // many files at once, or a whole folder (with its folders inside: one per school)
 for (const id of ["logosFile", "logosFolder"]) {
   $(id).onchange = async (e) => {
