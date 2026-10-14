@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, askChoice, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, isMirrored } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, logoFromSheetPicture, isMirrored } from "./library.js";
 import { schoolKey, logoPicker, withoutDoubles } from "./logos.js";
 import { fontsToShare, shareFonts } from "./font-share.js";
 import { newId } from "./libitem.js";
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14i";
+const VERSION = "2026-10-14j";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1118,10 +1118,13 @@ async function pictureLogo(f) {
   const url = URL.createObjectURL(f);
   try {
     const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = () => rej(new Error("not a picture")); i.src = url; });
-    const w = img.naturalWidth || 800, h = img.naturalHeight || 800, k = Math.min(1, 800 / Math.max(w, h));
+    // a picture of a logo sheet (the same logo many times): just one of them
+    const src = logoFromSheetPicture(img) || img;
+    const w = src.naturalWidth || src.width || 800, h = src.naturalHeight || src.height || 800, k = Math.min(1, 800 / Math.max(w, h));
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
-    c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+    c.getContext("2d").drawImage(src, 0, 0, c.width, c.height);
+    if (src !== img) src.width = src.height = 0;
     // a file in memory (a blob: address), not a long text: hundreds of logos fit
     const blob = await new Promise((res) => c.toBlob(res, "image/png"));
     return { data: blob ? URL.createObjectURL(blob) : c.toDataURL("image/png"), name: f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim(), size: w * h };
