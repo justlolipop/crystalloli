@@ -1149,7 +1149,19 @@ function mainLogo(boxes, data, W) {
 
 // a box holding a grid of logos (white gaps between them across the whole box) -> its cells (each
 // cut to its ink), or [the box] when it isn't one
-function splitGrid(b, data, W) {
+// a box holding a grid of logos -> its cells (each one logo), or [the box] when it isn't one: split
+// along the gaps between them (white, or a panel's plain colour), else — logos touching, no gap — at
+// the distance the drawing repeats across the box
+// (each piece split again: a sheet cut into strips first — a column of logos — then into its logos)
+function splitGrid(b, data, W, depth = 0) {
+  const min = depth ? 2 : 4;
+  // a piece about as wide as tall, found by splitting, is one logo: not cut further
+  const ar = (b.r - b.l) / Math.max(1, b.b - b.t);
+  if (depth && ar > 0.6 && ar < 1.7) return [b];
+  const cells = depth > 3 ? null : gapCells(b, data, W, min) || repeatCells(b, data, W, min);
+  return cells ? cells.flatMap((c) => splitGrid(c, data, W, depth + 1)) : [b];
+}
+function gapCells(b, data, W, min = 4) {
   const l = Math.round(b.l), t = Math.round(b.t), r = Math.round(b.r), bt = Math.round(b.b);
   // a background behind all the logos (a coloured panel): the one plain colour of the lines (columns,
   // rows) across the box that hold nothing else — the gaps between the logos — isn't ink
@@ -1170,7 +1182,7 @@ function splitGrid(b, data, W) {
   const colHas = (k) => { for (let y = t; y < bt; y += step) if (ink(l + k, y)) return true; return false; };
   const rowHas = (k) => { for (let x = l; x < r; x += step) if (ink(x, t + k)) return true; return false; };
   const cols = runs(r - l, colHas, r - l), rows = runs(bt - t, rowHas, bt - t);
-  if (cols.length < 2 && rows.length < 2) return [b];
+  if (cols.length < 2 && rows.length < 2) return null;
   const cells = [];
   for (const [y0, y1] of rows.length ? rows : [[0, bt - t]]) for (const [x0, x1] of cols.length ? cols : [[0, r - l]]) {
     // cut to the ink inside the cell
@@ -1181,13 +1193,16 @@ function splitGrid(b, data, W) {
     }
     if (cr >= 0) cells.push({ l: cl, t: ct, r: cr + step, b: cb + step });
   }
-  // a grid of the same logo: 4 cells or more, most of them about the same size (else it's one
-  // logo with parts, left whole)
-  if (cells.length < 4) return [b];
+  return copiesOf(cells, data, W, min);
+}
+
+// cells -> the cells when they're copies of one logo (4 or more, most about the same size and
+// looking like the first: pieces of one logo don't), else null
+function copiesOf(cells, data, W, min = 4) {
+  if (cells.length < min) return null;
   const size = (c) => (c.r - c.l) * (c.b - c.t), sizes = cells.map(size).sort((a, c) => a - c), mid = sizes[sizes.length >> 1];
   const even = cells.filter((c) => Math.abs(size(c) / mid - 1) < 0.2);
-  if (even.length < cells.length * 0.6) return [b];
-  // and they really are copies: each looks like the first (pieces of one logo don't)
+  if (even.length < cells.length * 0.6) return null;
   const look = (c) => {
     const v = [];
     for (let j = 0; j < 12; j++) for (let k = 0; k < 12; k++) {
@@ -1198,7 +1213,49 @@ function splitGrid(b, data, W) {
   };
   const first = look(even[0]);
   const alike = even.filter((c) => { const v = look(c); return v.reduce((n, x, i) => n + Math.abs(x - first[i]), 0) / v.length < 30; });
-  return alike.length >= 4 && alike.length >= even.length * 0.6 ? cells : [b];
+  return alike.length >= min && alike.length >= even.length * 0.6 ? cells : null;
+}
+
+// logos touching each other (round stickers packed edge to edge): the distance the drawing repeats
+// at across the box, along and down (the shift that matches it best with itself), and the box cut
+// into cells of that size -> cells, or null when it doesn't repeat
+function repeatCells(b, data, W, min = 4) {
+  const l = Math.round(b.l), t = Math.round(b.t), r = Math.round(b.r), bt = Math.round(b.b);
+  const step = Math.max(1, Math.round(Math.max(r - l, bt - t) / 400));
+  const cols = [], rows = [];
+  for (let x = l; x < r; x += step) { let n = 0; for (let y = t; y < bt; y += step) if (isInk(data, (y * W + x) * 4, null)) n++; cols.push(n); }
+  for (let y = t; y < bt; y += step) { let n = 0; for (let x = l; x < r; x += step) if (isInk(data, (y * W + x) * 4, null)) n++; rows.push(n); }
+  // the shift (in samples) that best matches the profile with itself, when it repeats 2 times or more
+  const period = (p) => {
+    const n = p.length, mean = p.reduce((a, v) => a + v, 0) / n;
+    const d = p.map((v) => v - mean), v0 = d.reduce((a, v) => a + v * v, 0);
+    if (!v0) return 0;
+    const cs = [];
+    for (let lag = 0; lag <= Math.floor(n / 2); lag++) {
+      let c = 0;
+      for (let i = 0; i + lag < n; i++) c += d[i] * d[i + lag];
+      cs.push(lag < Math.max(2, Math.floor(n / 12)) ? -1 : c / (v0 * ((n - lag) / n)));
+    }
+    const bestC = Math.max(...cs);
+    if (bestC <= 0.5) return 0;
+    // the shortest shift that matches nearly as well (twice the repeat matches too, as well)
+    for (let lag = 1; lag < cs.length - 1; lag++) if (cs[lag] >= bestC * 0.85 && cs[lag] >= cs[lag - 1] && cs[lag] >= cs[lag + 1]) return lag;
+    return cs.indexOf(bestC);
+  };
+  const px = period(cols), py = period(rows);
+  if (!px && !py) return null;
+  // both ways, else only across or only down (a repeat found the other way may be a false one)
+  for (const [qx, qy] of [[px, py], [px, 0], [0, py]]) {
+    const nx = qx ? Math.max(1, Math.round(cols.length / qx)) : 1, ny = qy ? Math.max(1, Math.round(rows.length / qy)) : 1;
+    if (nx * ny < min) continue;
+    const cw = (r - l) / nx, ch = (bt - t) / ny, cells = [];
+    // each a logo: about as wide as tall (thin slices of one flat colour would look alike too)
+    if (cw / ch < 0.5 || cw / ch > 2) continue;
+    for (let j = 0; j < ny; j++) for (let i = 0; i < nx; i++) cells.push({ l: l + i * cw, t: t + j * ch, r: l + (i + 1) * cw, b: t + (j + 1) * ch });
+    const ok = copiesOf(cells, data, W, min);
+    if (ok) return ok;
+  }
+  return null;
 }
 
 // ink: drawn (not see-through), not white, and not the background colour bg ([r, g, b] or null)
