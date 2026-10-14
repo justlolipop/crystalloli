@@ -104,7 +104,9 @@ export function logoPicker({ logo, school }, list) {
 // Shapes that aren't logos (crop marks, thin lines and frames: almost no ink in their box) are left out.
 // list: [{ data | src, name, ...anything }] -> the same, without the doubles; how many went; how many weren't logos
 export async function withoutDoubles(list) {
-  const prints = await Promise.all(list.map((x) => fingerprint(x.data || x.src).catch(() => null)));
+  // one picture at a time: hundreds decoded at once would run out of memory
+  const prints = [];
+  for (const x of list) prints.push(await fingerprint(x.data || x.src).catch(() => null));
   const keep = [];
   let junk = 0;
   list.forEach((x, i) => {
@@ -147,6 +149,7 @@ async function fingerprint(src) {
     if (k < l) l = k; if (k > r) r = k; if (y < t) t = y; if (y > b) b = y;
   }
   const box = r < 0 ? 1 : (r - l + 1) * (b - t + 1);
+  c.width = c.height = 0;
   return { bits, grey, ink: r < 0 ? 0 : n / box, ratio: (img.naturalWidth || 1) / (img.naturalHeight || 1), area: (img.naturalWidth || 0) * (img.naturalHeight || 0) };
 }
 const distance = (a, b) => a.reduce((n, v, i) => n + (v !== b[i] ? 1 : 0), 0);

@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14c";
+const VERSION = "2026-10-14d";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1088,7 +1088,7 @@ $("logosBtn").onclick = async () => {
 function renderLogos() {
   const q = schoolKey($("logosSearch").value);
   $("logosList").innerHTML = logoEdit.list.map((x, i) => (q && !schoolKey(x.name).includes(q) ? "" :
-    `<div class="logocell"><img alt="" src="${esc(x.data || fileUrl(x.file))}">` +
+    `<div class="logocell"><img alt="" loading="lazy" decoding="async" src="${esc(x.data || fileUrl(x.file))}">` +
     `<input data-i="${i}" value="${esc(x.name)}" placeholder="School name" aria-label="School name">` +
     `<button type="button" class="x" data-del="${i}" title="Delete this logo" aria-label="Delete this logo">✕</button></div>`)).join("") ||
     `<p class="hint">No logos yet. Import an .ai with your schools' logos.</p>`;
@@ -1119,7 +1119,9 @@ async function pictureLogo(f) {
     const c = document.createElement("canvas");
     c.width = Math.max(1, Math.round(w * k)); c.height = Math.max(1, Math.round(h * k));
     c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
-    return { data: c.toDataURL("image/png"), name: f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim(), size: w * h };
+    // a file in memory (a blob: address), not a long text: hundreds of logos fit
+    const blob = await new Promise((res) => c.toBlob(res, "image/png"));
+    return { data: blob ? URL.createObjectURL(blob) : c.toDataURL("image/png"), name: f.name.replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").trim(), size: w * h };
   } finally { URL.revokeObjectURL(url); }
 }
 // many files at once: .ai / .pdf (every logo in them cut out) and pictures (one logo each)

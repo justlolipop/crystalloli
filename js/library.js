@@ -1023,6 +1023,8 @@ export async function extractLogos(file, progress) {
   }
   const doc = await pdfjsLib.getDocument({ data: bytes, fontExtraProperties: true, canvasFactory: new CanvasFactory() }).promise;
   const out = [];
+  // closed afterwards, whatever happens: many .ai files in a row mustn't stay in memory
+  try {
   for (let n = 1; n <= doc.numPages; n++) {
     progress && progress(`Finding the logos${doc.numPages > 1 ? ` — artboard ${n} of ${doc.numPages}` : ""}…`);
     const page = await doc.getPage(n);
@@ -1058,7 +1060,7 @@ export async function extractLogos(file, progress) {
       });
       if (best) named[best.i].push(wd);
     }
-    boxes.forEach((b, i) => {
+    for (const [i, b] of boxes.entries()) {
       const pad = Math.round(Math.max(b.r - b.l, b.b - b.t) * 0.03);
       const x = Math.max(0, b.l - pad), y = Math.max(0, b.t - pad), w = Math.min(W, b.r + pad) - x, h = Math.min(H, b.b + pad) - y;
       const k = Math.min(1, 800 / Math.max(w, h));
@@ -1067,11 +1069,15 @@ export async function extractLogos(file, progress) {
       // the words in reading order: line by line (close tops), left to right
       const ws = named[i].sort((a, b2) => (Math.abs(a.t - b2.t) < (a.b - a.t) * 0.5 ? a.l - b2.l : a.t - b2.t));
       const name = ws.map((wd) => wd.str).join(" ").replace(/\s+/g, " ").trim();
-      out.push({ data: c.canvas.toDataURL("image/png"), name, size: w * h, page: n, y: b.t, x: b.l });
+      // kept as a file in memory (a blob: address), not as a long text: hundreds of logos fit
+      const blob = await new Promise((res) => c.canvas.toBlob(res, "image/png"));
+      out.push({ data: blob ? URL.createObjectURL(blob) : c.canvas.toDataURL("image/png"), name, size: w * h, page: n, y: b.t, x: b.l });
       c.canvas.width = c.canvas.height = 0;
-    });
+    }
     full.canvas.width = full.canvas.height = 0;
+    page.cleanup();
   }
+  } finally { try { await doc.destroy(); } catch (e) {} }
   return out.map(({ data, name, size }) => ({ data, name, size }));
 }
 
