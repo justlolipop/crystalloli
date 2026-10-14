@@ -97,35 +97,57 @@ export function logoPicker({ logo, school }, list) {
   return pick;
 }
 
-// The same logo more than once (in a big .ai, or imported twice): kept once, the biggest copy (the
-// sharpest), with a name if any copy had one. Logos compare by a small fingerprint of the picture
-// (16 x 16 grey, each pixel brighter than the next or not) and by their shape.
-// list: [{ data (data URL), name, size? }] -> the same, without the doubles; and how many went
+// The same logo more than once (in a big .ai, imported twice, or under two names): kept once, the
+// biggest copy (the sharpest), with a name if any copy had one. Logos compare by a small fingerprint
+// of the picture (16 x 16 grey, each pixel brighter than the next or not) and by their shape; under
+// different names only when nearly the same picture pixel for pixel (crests can look alike that small).
+// Shapes that aren't logos (crop marks, thin lines and frames: almost no ink in their box) are left out.
+// list: [{ data | src, name, ...anything }] -> the same, without the doubles; how many went; how many weren't logos
 export async function withoutDoubles(list) {
-  const prints = await Promise.all(list.map((x) => fingerprint(x.data).catch(() => null)));
+  const prints = await Promise.all(list.map((x) => fingerprint(x.data || x.src).catch(() => null)));
   const keep = [];
+  let junk = 0;
   list.forEach((x, i) => {
     const p = prints[i];
-    // never two different schools' logos (crests can look alike that small): only the same name, or no name
-    const sameSchool = (k) => !x.name || !k.x.name || schoolKey(x.name) === schoolKey(k.x.name);
-    const twin = p && keep.find((k) => k.p && sameSchool(k) && Math.abs(k.p.ratio - p.ratio) < 0.12 && distance(k.p.bits, p.bits) <= 40);
+    if (p && p.ink < 0.1) { junk++; x.junk = true; return; }
+    const sameName = (k) => !nameKey(x.name) || !nameKey(k.x.name) || nameKey(x.name) === nameKey(k.x.name);
+    const twin = p && keep.find((k) => k.p && Math.abs(k.p.ratio - p.ratio) < 0.12 &&
+      (sameName(k) ? distance(k.p.bits, p.bits) <= 40 : Math.abs(k.p.ratio - p.ratio) < 0.05 && greyDiff(k.p.grey, p.grey) < 7));
     if (!twin) { keep.push({ x, p }); return; }
-    const big = (x.size || 0) > (twin.x.size || 0) ? x : twin.x;
-    twin.x = { ...big, name: big.name || x.name || twin.x.name };
+    const big = (p.area || 0) > (twin.p.area || 0) ? { x, p } : twin, small = big === twin ? { x, p } : twin;
+    small.x.gone = true;
+    twin.x = { ...big.x, name: (big.x.name || "").trim() || small.x.name || "" };
+    twin.p = big.p;
   });
-  return { list: keep.map((k) => k.x), dropped: list.length - keep.length };
+  return { list: keep.map((k) => k.x), dropped: list.length - keep.length - junk, junk, gone: list.filter((x) => x.gone || x.junk) };
 }
+// a name to compare logos by: the school's, without "LOGO", "COPY", "FINAL" …
+const nameKey = (name) => schoolKey(name).split(" ").filter((w) => w && !/^(LOGO|LOGOS|COPY|FINAL|NEW|PNG|JPG|AI)$/.test(w)).join(" ");
 async function fingerprint(src) {
-  const img = await new Promise((res, rej) => { const i = new Image(); i.onload = () => res(i); i.onerror = rej; i.src = src; });
+  const img = await new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; });
   const c = document.createElement("canvas");
-  c.width = 17; c.height = 16;
+  c.width = 64; c.height = 64;
   const x = c.getContext("2d", { willReadFrequently: true });
-  x.fillStyle = "#ffffff"; x.fillRect(0, 0, 17, 16);
-  x.drawImage(img, 0, 0, 17, 16);
-  const d = x.getImageData(0, 0, 17, 16).data, grey = (i) => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
-  const bits = [];
+  const shade = (w, h) => { x.fillStyle = "#ffffff"; x.fillRect(0, 0, 64, 64); x.drawImage(img, 0, 0, w, h); return x.getImageData(0, 0, w, h).data; };
+  const lum = (d, i) => d[i] * 0.299 + d[i + 1] * 0.587 + d[i + 2] * 0.114;
   // brighter than the next pixel by a clear step (tiny differences are only how it was shrunk)
-  for (let y = 0; y < 16; y++) for (let k = 0; k < 16; k++) bits.push(grey((y * 17 + k) * 4) > grey((y * 17 + k + 1) * 4) + 10 ? 1 : 0);
-  return { bits, ratio: (img.naturalWidth || 1) / (img.naturalHeight || 1) };
+  let d = shade(17, 16);
+  const bits = [];
+  for (let y = 0; y < 16; y++) for (let k = 0; k < 16; k++) bits.push(lum(d, (y * 17 + k) * 4) > lum(d, (y * 17 + k + 1) * 4) + 10 ? 1 : 0);
+  d = shade(32, 32);
+  const grey = []; // colour, in fact: red, green and blue of each pixel (two crests alike in grey may not be)
+  for (let i = 0; i < 32 * 32; i++) grey.push(d[i * 4], d[i * 4 + 1], d[i * 4 + 2]);
+  // how much of its box has ink: a logo is mostly filled, a crop mark or a thin frame isn't
+  d = shade(64, 64);
+  let n = 0, l = 64, t = 64, r = -1, b = -1;
+  for (let y = 0; y < 64; y++) for (let k = 0; k < 64; k++) {
+    const v = lum(d, (y * 64 + k) * 4);
+    if (v > 235) continue;
+    n += (255 - v) / 255; // half-covered edge pixels count half
+    if (k < l) l = k; if (k > r) r = k; if (y < t) t = y; if (y > b) b = y;
+  }
+  const box = r < 0 ? 1 : (r - l + 1) * (b - t + 1);
+  return { bits, grey, ink: r < 0 ? 0 : n / box, ratio: (img.naturalWidth || 1) / (img.naturalHeight || 1), area: (img.naturalWidth || 0) * (img.naturalHeight || 0) };
 }
 const distance = (a, b) => a.reduce((n, v, i) => n + (v !== b[i] ? 1 : 0), 0);
+const greyDiff = (a, b) => a.reduce((n, v, i) => n + Math.abs(v - b[i]), 0) / a.length;
