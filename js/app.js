@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14f";
+const VERSION = "2026-10-14g";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1084,6 +1084,7 @@ $("logosBtn").onclick = async () => {
   $("logosSearch").value = "";
   renderLogos();
   logoStatus("");
+  logoBar(0, 0);
   $("logosStop").hidden = true;
   $("logosDlg").showModal();
 };
@@ -1139,7 +1140,10 @@ function folderOf(f) {
 const inSubfolder = (f) => String(f.webkitRelativePath || "").split("/").length > 2;
 // what's happening, inside the School logos window (a message at the bottom of the page would be
 // hidden behind it)
-const logoStatus = (msg, bad) => { const el = $("logosStatus"); el.textContent = msg || ""; el.className = bad ? "warn" : "hint"; el.hidden = !msg; };
+// always shown (pinned at the top of the window); the bar: files read so far (hidden when idle)
+const LOGO_IDLE = "Import logo files or a whole folder: what's happening shows here.";
+const logoStatus = (msg, bad) => { const el = $("logosStatus"); el.textContent = msg || LOGO_IDLE; el.className = bad ? "warn" : "hint"; };
+const logoBar = (done, all) => { const b = $("logosBar"); b.hidden = !all; if (all) { b.max = all; b.value = done; } };
 let logoStop = false;
 $("logosStop").onclick = () => { logoStop = true; logoStatus("Stopping after this file…"); };
 async function importLogoFiles(all) {
@@ -1161,6 +1165,7 @@ async function importLogoFiles(all) {
     for (const [i, f] of files.entries()) {
       if (logoStop) break;
       const head = `File ${i + 1} of ${files.length} (${f.name})`;
+      logoBar(i, files.length);
       logoStatus(`${head}…  ${fresh.length} logo${fresh.length === 1 ? "" : "s"} found so far.`);
       const folder = genericName(folderOf(f)) ? "" : folderOf(f), own = cleanName(f.name);
       const fromWhere = folder && (inSubfolder(f) || inFolder[folder] === 1 || genericName(own)) ? folder : genericName(own) ? "" : own;
@@ -1190,6 +1195,7 @@ async function importLogoFiles(all) {
       done++;
     }
     // the same logo twice (also one kept already): once, the biggest copy; and no crop marks
+    logoBar(files.length, files.length);
     logoStatus(`Looking for repeated logos among ${logoEdit.list.length}…`);
     logoEdit.list = logoEdit.list.filter((x) => !fresh.includes(x));
     const { dropped, junk } = await tidyLogos(fresh);
@@ -1200,7 +1206,7 @@ async function importLogoFiles(all) {
       (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
       (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : "") + " Check them, then Save." +
       (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !fresh.length);
-  } finally { setBusy(false); }
+  } finally { setBusy(false); logoBar(0, 0); }
 }
 // the logos being changed plus new ones: repeats (also under another name) once, the biggest copy,
 // and shapes that aren't logos out; new ones first, to check them. -> { dropped, junk }
@@ -1246,9 +1252,9 @@ $("logosSave").onclick = async () => {
   $("logosSave").disabled = true;
   try {
     await store.saveLogos(list, add, drop.filter((f) => !list.some((x) => x.file === f)),
-      (n) => logoStatus(`Saving the logos… ${n} of ${add.length} pictures uploaded`));
+      (n) => { logoStatus(`Saving the logos… ${n} of ${add.length} pictures uploaded`); logoBar(n, add.length); });
   } catch (e) { return logoStatus("Couldn't save: " + e.message + " — nothing is lost here: press Save again.", true); }
-  finally { $("logosSave").disabled = false; }
+  finally { $("logosSave").disabled = false; logoBar(0, 0); }
   $("logosDlg").close();
   pickLogo = logoPicker(S.logoFrom || {}, list);
   if (S.key) await show(S.row);
