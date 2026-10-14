@@ -229,6 +229,8 @@ body:not(.teacher) #teacherHint{display:none}
     <input id="logosSearch" type="search" placeholder="Search a school" aria-label="Search a school">
     <span id="logosNote" class="hint"></span>
   </div>
+  <p id="logosStatus" class="hint" role="status" aria-live="polite" hidden style="margin:6px 0"></p>
+  <button type="button" id="logosStop" hidden title="Stop after the file being read; the logos found so far stay">Stop importing</button>
   <div id="logosList" class="logolist"></div>
   <div class="dlg-actions"><button id="logosClose">Close</button><button id="logosSave" class="primary">Save</button></div>
 </dialog>
