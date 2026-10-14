@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-13t";
+const VERSION = "2026-10-14a";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -118,6 +118,8 @@ async function show(r, key) {
     const want = jenisLabel(S.row);
     editor.showEmpty(!want
       ? "This row has no <b>jenis_plak</b>, so no crystal is picked.<br>Fill column F in the Excel, e.g. <b>CRYSTAL / AK7 / DESIGN C</b>."
+      : S.libraryError
+        ? `Couldn't load the templates from the online database (${esc(S.libraryError)}).<br>They are still saved — check the internet connection and press <b>Ctrl+F5</b> to try again.`
       : autoKey(S.row) === null
         ? `This row needs <b>${esc(want)}</b>, which isn't imported yet.<br>Press <b>Template folder</b> below to import it.`
         : `Couldn't read <b>${esc(want)}</b>. Write it like <b>CRYSTAL / AK7 / DESIGN C</b>.`);
@@ -272,7 +274,9 @@ function renderSources() {
   $("sources").innerHTML = all.map((s) => `<span class="src${s.file === openFile ? " on" : ""}" data-file="${esc(s.file)}" title="See this file's designs, to change one">` +
     `${esc(s.label)} <span class="tag">${s.items.length}</span>` +
     `<button class="x" data-delfile="${esc(s.file)}" aria-label="Delete ${esc(s.label)}" title="Remove this file's designs from the studio">×</button></span>`).join("")
-    || `<p class="hint">No templates yet. Press <b>Import file</b> to add a crystal .ai.</p>`;
+    || (S.libraryError
+      ? `<p class="warn">Couldn't load the templates (${esc(S.libraryError)}). They are still saved online. <button type="button" onclick="location.reload()">Try again</button></p>`
+      : `<p class="hint">No templates yet. Press <b>Import file</b> to add a crystal .ai.</p>`);
   const src = all.find((s) => s.file === openFile);
   $("srcDesigns").innerHTML = src ? src.items.map((it) =>
     `<button type="button" data-open="${esc(it.id)}"${"lib|" + it.id === S.key ? ' aria-pressed="true"' : ""}>${esc(it.name.replace(/^.*—\s*/, "") || it.name)}</button>`).join("") : "";
@@ -1198,7 +1202,14 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
   // the template folder is on this PC: only there when the studio runs from server.js
   if (!(await store.hasLocal())) $("folderBtn").hidden = true;
   try { setMaster(await store.master()); } catch (e) {}
-  try { S.library = await store.listLibrary(); } catch (e) { S.library = []; toast(e.message, "bad"); }
+  // the templates: tried a few times (a slow or unsteady connection), and when they still can't be
+  // read, said so — never shown as "no templates", as if they were gone
+  S.libraryError = "";
+  for (let n = 0; n < 4; n++) {
+    try { S.library = await store.listLibrary(); S.libraryError = ""; break; }
+    catch (e) { S.library = []; S.libraryError = e.message || String(e); await new Promise((ok) => setTimeout(ok, 1000 * 2 ** n)); }
+  }
+  if (S.libraryError) toast("Couldn't load the templates: " + S.libraryError, "bad");
   if (unlocked) checkFonts(); // fonts of designs imported before, not shared yet (admin)
   // designs imported before the logo clean-up: cleaned once now (and saved)
   // (and, for those cleaned before, where their logo was: the school's logo goes there)
