@@ -228,6 +228,7 @@ body:not(.teacher) #teacherHint{display:none}
   <div class="logobar">
     <label class="btn" title="Pick many files at once: an .ai / .pdf with many logos (each cut out), or picture files (.png .jpg .svg .webp), each named by its file name">Import logos (.ai or pictures)<input type="file" id="logosFile" accept=".ai,.pdf,.png,.jpg,.jpeg,.svg,.webp" multiple hidden></label>
     <label class="btn" title="Pick a folder: every .ai / picture in it and in its folders is imported, each logo named after its folder (one folder per school), else after its file">Import a folder<input type="file" id="logosFolder" webkitdirectory multiple hidden></label>
+    <button type="button" id="logosSplit" title="Logos in the list that are a whole sheet (the same logo many times): keep just one of them">Split sheets</button>
     <button type="button" id="logosTidy" title="The same logo more than once (also under different names): keep only the biggest copy; and take out shapes that aren't logos (lines, crop marks)">Remove repeats</button>
     <input id="logosSearch" type="search" placeholder="Search a school" aria-label="Search a school">
     <span id="logosNote" class="hint"></span>

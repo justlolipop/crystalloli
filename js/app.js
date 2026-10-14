@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14j";
+const VERSION = "2026-10-14k";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1155,7 +1155,7 @@ async function importLogoFiles(all) {
   // how many logo files each folder holds: a folder with one is that school's, so it names it
   const inFolder = {};
   for (const f of files) { const d = folderOf(f); if (d) inFolder[d] = (inFolder[d] || 0) + 1; }
-  const busy = ["logosFile", "logosFolder", "logosTidy", "logosSave"];
+  const busy = ["logosFile", "logosFolder", "logosSplit", "logosTidy", "logosSave"];
   const setBusy = (on) => {
     for (const id of busy) { const el = $(id); el.disabled = on; const l = el.closest("label"); if (l) l.classList.toggle("disabled", on); }
     $("logosStop").hidden = !on;
@@ -1225,6 +1225,32 @@ async function tidyLogos(fresh = []) {
   fresh.splice(0, fresh.length, ...back.filter((x) => x.data && !x.file));
   return { dropped, junk };
 }
+// sheets already in the list (the same logo many times, saved as one picture): each becomes one logo
+$("logosSplit").onclick = async () => {
+  const list = logoEdit.list;
+  let fixed = 0;
+  $("logosSplit").disabled = true;
+  try {
+    for (const [i, x] of list.entries()) {
+      logoStatus(`Looking for sheets… ${i + 1} of ${list.length}${fixed ? `, ${fixed} made into one logo` : ""}`);
+      logoBar(i, list.length);
+      try {
+        const img = await new Promise((ok, no) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => ok(im); im.onerror = no; im.src = x.data || fileUrl(x.file); });
+        const one = logoFromSheetPicture(img);
+        if (!one) continue;
+        const blob = await new Promise((ok) => one.toBlob(ok, "image/png"));
+        one.width = one.height = 0;
+        if (!blob) continue;
+        // a kept one: saved under a new name (a browser may still have the old picture), the old one removed on Save
+        if (x.file) { logoEdit.drop.push(x.file); delete x.file; x.id = newId(); }
+        x.data = URL.createObjectURL(blob);
+        fixed++;
+      } catch (e) {}
+    }
+  } finally { $("logosSplit").disabled = false; logoBar(0, 0); }
+  renderLogos();
+  logoStatus(fixed ? `${fixed} sheet${fixed === 1 ? " is" : "s are"} now one logo each. Check them, then Save.` : "No sheets found (pictures with the same logo many times).");
+};
 $("logosTidy").onclick = async () => {
   logoStatus(`Looking for repeated logos among ${logoEdit.list.length}…`);
   const { dropped, junk } = await tidyLogos();
