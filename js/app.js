@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14h";
+const VERSION = "2026-10-14i";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1160,21 +1160,22 @@ async function importLogoFiles(all) {
   logoStop = false;
   setBusy(true);
   const fresh = [], bad = [];
-  let done = 0;
+  let done = 0, skipped = 0;
   try {
     for (const [i, f] of files.entries()) {
       if (logoStop) break;
       const head = `File ${i + 1} of ${files.length} (${f.name})`;
       logoBar(i, files.length);
-      logoStatus(`${head}…  ${fresh.length} logo${fresh.length === 1 ? "" : "s"} found so far.`);
+      logoStatus(`${head}…  ${fresh.length} logo${fresh.length === 1 ? "" : "s"} found so far${skipped ? `, ${skipped} file${skipped === 1 ? "" : "s"} skipped (not a logo sheet)` : ""}.`);
       const folder = genericName(folderOf(f)) ? "" : folderOf(f), own = cleanName(f.name);
       const fromWhere = folder && (inSubfolder(f) || inFolder[folder] === 1 || genericName(own)) ? folder : genericName(own) ? "" : own;
       let got = [];
       try {
         if (/\.(ai|pdf)$/i.test(f.name)) {
           // one logo per .ai (a sheet of the same logo, crop marks, a title: just that logo)
-          got = await extractLogos(f, (m) => logoStatus(`${head}: ${m}  ${fresh.length} found so far.`), { one: true });
-          if (!got.length) bad.push(`${f.name}: no logos found`);
+          // only logo sheets (the same logo many times, its school's name on top): any other .ai is skipped
+          got = await extractLogos(f, (m) => logoStatus(`${head}: ${m}  ${fresh.length} found so far.`), { one: true, sheets: true });
+          if (!got.length) skipped++;
           // one logo: named from where it came from; many: the biggest one without a name of its own
           const unnamed = got.filter((x) => !x.name);
           if (fromWhere && unnamed.length) {
@@ -1204,6 +1205,7 @@ async function importLogoFiles(all) {
     logoStatus(`${logoStop ? `Stopped after ${done} of ${files.length} files. ` : ""}Found ${fresh.length} new logo${fresh.length === 1 ? "" : "s"} in ${done} file${done === 1 ? "" : "s"}.` +
       (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
       (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
+      (skipped ? ` ${skipped} .ai file${skipped === 1 ? " wasn't a logo sheet" : "s weren't logo sheets"} (the same logo many times), so skipped.` : "") +
       (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : "") + " Check them, then Save." +
       (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !fresh.length);
   } finally { setBusy(false); logoBar(0, 0); }
