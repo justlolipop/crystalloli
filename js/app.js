@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14d";
+const VERSION = "2026-10-14g";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1083,6 +1083,9 @@ $("logosBtn").onclick = async () => {
   logoEdit = { list: (Array.isArray(list) ? list : []).map((x) => ({ ...x })), drop: [] };
   $("logosSearch").value = "";
   renderLogos();
+  logoStatus("");
+  logoBar(0, 0);
+  $("logosStop").hidden = true;
   $("logosDlg").showModal();
 };
 function renderLogos() {
@@ -1135,46 +1138,75 @@ function folderOf(f) {
 }
 // in a folder inside the picked one (LOGO\SK KUANG\crest.ai): that folder is the school's
 const inSubfolder = (f) => String(f.webkitRelativePath || "").split("/").length > 2;
+// what's happening, inside the School logos window (a message at the bottom of the page would be
+// hidden behind it)
+// always shown (pinned at the top of the window); the bar: files read so far (hidden when idle)
+const LOGO_IDLE = "Import logo files or a whole folder: what's happening shows here.";
+const logoStatus = (msg, bad) => { const el = $("logosStatus"); el.textContent = msg || LOGO_IDLE; el.className = bad ? "warn" : "hint"; };
+const logoBar = (done, all) => { const b = $("logosBar"); b.hidden = !all; if (all) { b.max = all; b.value = done; } };
+let logoStop = false;
+$("logosStop").onclick = () => { logoStop = true; logoStatus("Stopping after this file…"); };
 async function importLogoFiles(all) {
   const files = all.filter((f) => /\.(ai|pdf|png|jpe?g|svg|webp)$/i.test(f.name));
-  if (!files.length) return toast("No .ai, .pdf or picture files there.", "bad");
+  if (!files.length) return logoStatus("No .ai, .pdf or picture files there.", true);
   // how many logo files each folder holds: a folder with one is that school's, so it names it
   const inFolder = {};
   for (const f of files) { const d = folderOf(f); if (d) inFolder[d] = (inFolder[d] || 0) + 1; }
-  const found = [], bad = [];
-  for (const [i, f] of files.entries()) {
-    const folder = genericName(folderOf(f)) ? "" : folderOf(f), own = cleanName(f.name);
-    const fromWhere = folder && (inSubfolder(f) || inFolder[folder] === 1 || genericName(own)) ? folder : genericName(own) ? "" : own;
-    try {
-      if (/\.(ai|pdf)$/i.test(f.name)) {
-        const got = await extractLogos(f, (m) => toast(`${files.length > 1 ? `File ${i + 1} of ${files.length}: ` : ""}${m}`));
-        if (!got.length) bad.push(`${f.name}: no logos found`);
-        // one logo: named from where it came from; many: the biggest one without a name of its own
-        const unnamed = got.filter((x) => !x.name);
-        if (fromWhere && unnamed.length) {
-          const big = got.length === 1 ? got[0] : unnamed.reduce((a, b) => ((b.size || 0) > (a.size || 0) ? b : a));
-          if (!big.name) big.name = fromWhere;
+  const busy = ["logosFile", "logosFolder", "logosTidy", "logosSave"];
+  const setBusy = (on) => {
+    for (const id of busy) { const el = $(id); el.disabled = on; const l = el.closest("label"); if (l) l.classList.toggle("disabled", on); }
+    $("logosStop").hidden = !on;
+  };
+  logoStop = false;
+  setBusy(true);
+  const fresh = [], bad = [];
+  let done = 0;
+  try {
+    for (const [i, f] of files.entries()) {
+      if (logoStop) break;
+      const head = `File ${i + 1} of ${files.length} (${f.name})`;
+      logoBar(i, files.length);
+      logoStatus(`${head}…  ${fresh.length} logo${fresh.length === 1 ? "" : "s"} found so far.`);
+      const folder = genericName(folderOf(f)) ? "" : folderOf(f), own = cleanName(f.name);
+      const fromWhere = folder && (inSubfolder(f) || inFolder[folder] === 1 || genericName(own)) ? folder : genericName(own) ? "" : own;
+      let got = [];
+      try {
+        if (/\.(ai|pdf)$/i.test(f.name)) {
+          // one logo per .ai (a sheet of the same logo, crop marks, a title: just that logo)
+          got = await extractLogos(f, (m) => logoStatus(`${head}: ${m}  ${fresh.length} found so far.`), { one: true });
+          if (!got.length) bad.push(`${f.name}: no logos found`);
+          // one logo: named from where it came from; many: the biggest one without a name of its own
+          const unnamed = got.filter((x) => !x.name);
+          if (fromWhere && unnamed.length) {
+            const big = got.length === 1 ? got[0] : unnamed.reduce((a, b) => ((b.size || 0) > (a.size || 0) ? b : a));
+            if (!big.name) big.name = fromWhere;
+          }
+        } else {
+          const x = await pictureLogo(f);
+          x.name = fromWhere || x.name;
+          got = [x];
         }
-        found.push(...got);
-      } else {
-        if (files.length > 1) toast(`File ${i + 1} of ${files.length}: ${f.name}…`);
-        const x = await pictureLogo(f);
-        x.name = fromWhere || x.name;
-        found.push(x);
-      }
-    } catch (err) { bad.push(`${f.name}: ${err.message}`); }
-  }
-  // the same logo twice (also one kept already): once, the biggest copy; and no crop marks
-  const fresh = found.map((x) => ({ id: newId(), name: x.name || "", data: x.data }));
-  const { dropped, junk } = await tidyLogos(fresh);
-  const once = logoEdit.list.filter((x) => fresh.includes(x));
-  renderLogos();
-  const unnamed = once.filter((x) => !x.name).length;
-  toast(`Found ${once.length} new logo${once.length === 1 ? "" : "s"} in ${files.length} file${files.length === 1 ? "" : "s"}.` +
-    (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
-    (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
-    (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : " Check the names, then Save.") +
-    (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !found.length ? "bad" : "");
+      } catch (err) { bad.push(`${f.name}: ${err.message}`); }
+      // shown straight away, first in the list (repeats are taken out at the end)
+      const add = got.map((x) => ({ id: newId(), name: x.name || "", data: x.data }));
+      fresh.push(...add);
+      logoEdit.list.unshift(...add);
+      renderLogos();
+      done++;
+    }
+    // the same logo twice (also one kept already): once, the biggest copy; and no crop marks
+    logoBar(files.length, files.length);
+    logoStatus(`Looking for repeated logos among ${logoEdit.list.length}…`);
+    logoEdit.list = logoEdit.list.filter((x) => !fresh.includes(x));
+    const { dropped, junk } = await tidyLogos(fresh);
+    renderLogos();
+    const unnamed = fresh.filter((x) => !x.name).length;
+    logoStatus(`${logoStop ? `Stopped after ${done} of ${files.length} files. ` : ""}Found ${fresh.length} new logo${fresh.length === 1 ? "" : "s"} in ${done} file${done === 1 ? "" : "s"}.` +
+      (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
+      (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
+      (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : "") + " Check them, then Save." +
+      (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !fresh.length);
+  } finally { setBusy(false); logoBar(0, 0); }
 }
 // the logos being changed plus new ones: repeats (also under another name) once, the biggest copy,
 // and shapes that aren't logos out; new ones first, to check them. -> { dropped, junk }
@@ -1189,10 +1221,10 @@ async function tidyLogos(fresh = []) {
   return { dropped, junk };
 }
 $("logosTidy").onclick = async () => {
-  toast("Looking for repeated logos…");
+  logoStatus(`Looking for repeated logos among ${logoEdit.list.length}…`);
   const { dropped, junk } = await tidyLogos();
   renderLogos();
-  toast(dropped || junk ? `${dropped} repeat${dropped === 1 ? "" : "s"} and ${junk} shape${junk === 1 ? "" : "s"} that aren't logos removed (the biggest copy kept). Check, then Save.` : "No repeated logos found.");
+  logoStatus(dropped || junk ? `${dropped} repeat${dropped === 1 ? "" : "s"} and ${junk} shape${junk === 1 ? "" : "s"} that aren't logos removed (the biggest copy kept). Check, then Save.` : "No repeated logos found.");
 };
 // many files at once, or a whole folder (with its folders inside: one per school)
 for (const id of ["logosFile", "logosFolder"]) {
@@ -1216,8 +1248,13 @@ $("logosSave").onclick = async () => {
     if (x.data) add.push({ file, data: x.data });
     list.push({ id: x.id, name: x.name.trim(), file });
   }
-  toast("Saving the logos…");
-  try { await store.saveLogos(list, add, drop.filter((f) => !list.some((x) => x.file === f))); } catch (e) { return toast(e.message, "bad"); }
+  logoStatus("Saving the logos…");
+  $("logosSave").disabled = true;
+  try {
+    await store.saveLogos(list, add, drop.filter((f) => !list.some((x) => x.file === f)),
+      (n) => { logoStatus(`Saving the logos… ${n} of ${add.length} pictures uploaded`); logoBar(n, add.length); });
+  } catch (e) { return logoStatus("Couldn't save: " + e.message + " — nothing is lost here: press Save again.", true); }
+  finally { $("logosSave").disabled = false; logoBar(0, 0); }
   $("logosDlg").close();
   pickLogo = logoPicker(S.logoFrom || {}, list);
   if (S.key) await show(S.row);

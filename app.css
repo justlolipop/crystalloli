@@ -228,3 +228,6 @@ button:hover:not(:disabled), label.btn:hover, select:hover { border-color: var(-
 .chip.sel, .tcard[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--acc2) inset, 0 0 12px rgba(166, 77, 255, 0.35); }
 #stageWrap { box-shadow: inset 0 0 0 1px var(--line); }
 ::selection { background: rgba(166, 77, 255, 0.45); }
+
+/* a file button while an import runs */
+label.btn.disabled { opacity: 0.5; pointer-events: none; }

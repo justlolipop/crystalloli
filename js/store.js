@@ -141,8 +141,9 @@ const online = {
     return value;
   },
   // school logos: the list (setting "logos": [{ id, name, file }]) and their pictures (logos/<id>.png)
-  async saveLogos(list, add, drop) {
-    for (const x of add) await putFile(x.file, await dataUrlBlob(x.data), "image/png");
+  async saveLogos(list, add, drop, progress) {
+    let n = 0;
+    for (const x of add) { await putFile(x.file, await dataUrlBlob(x.data), "image/png"); progress && progress(++n); }
     await removeFiles(drop);
     return online.saveSetting("logos", list);
   },
@@ -226,9 +227,9 @@ export const store = {
   // school logos (see js/logos.js): [{ id, name, file }]; saving: the new list, the new pictures
   // ([{ file, data }]) and the files no longer used
   logos: () => (ONLINE ? online.setting("logos", []) : Promise.resolve([])),
-  saveLogos(list, add = [], drop = []) {
+  saveLogos(list, add = [], drop = [], progress) {
     if (!ONLINE) return Promise.reject(new Error("School logos are kept online: open Crystal Studio from its website."));
-    return online.saveLogos(list, add, drop).then(announce);
+    return online.saveLogos(list, add, drop, progress).then(announce);
   },
   // true when the studio can work: online, or this page comes from server.js
   async ping() { return ONLINE || local(); },
