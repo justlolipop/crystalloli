@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14a";
+const VERSION = "2026-10-14b";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1123,20 +1123,42 @@ async function pictureLogo(f) {
   } finally { URL.revokeObjectURL(url); }
 }
 // many files at once: .ai / .pdf (every logo in them cut out) and pictures (one logo each)
-$("logosFile").onchange = async (e) => {
-  const files = [...e.target.files];
-  e.target.value = "";
-  if (!files.length) return;
+// the name a logo gets from where it came from: its folder (a folder picked with "Import a folder":
+// one folder per school), else its file's name — unless that's only a number or "logo", "IMG_1234" …
+const cleanName = (s) => String(s || "").replace(/\.[^.]+$/, "").replace(/[_]+/g, " ").replace(/\s+/g, " ").trim();
+const genericName = (s) => !s || /^(logo|logos|img|image|dsc|photo|pic|picture|untitled|scan|screenshot|whatsapp image|copy)?[\s\d()._-]*(copy)?[\s\d()._-]*$/i.test(s);
+function folderOf(f) {
+  const parts = String(f.webkitRelativePath || "").split("/");
+  return parts.length > 1 ? cleanName(parts[parts.length - 2]) : "";
+}
+// in a folder inside the picked one (LOGO\SK KUANG\crest.ai): that folder is the school's
+const inSubfolder = (f) => String(f.webkitRelativePath || "").split("/").length > 2;
+async function importLogoFiles(all) {
+  const files = all.filter((f) => /\.(ai|pdf|png|jpe?g|svg|webp)$/i.test(f.name));
+  if (!files.length) return toast("No .ai, .pdf or picture files there.", "bad");
+  // how many logo files each folder holds: a folder with one is that school's, so it names it
+  const inFolder = {};
+  for (const f of files) { const d = folderOf(f); if (d) inFolder[d] = (inFolder[d] || 0) + 1; }
   const found = [], bad = [];
   for (const [i, f] of files.entries()) {
+    const folder = genericName(folderOf(f)) ? "" : folderOf(f), own = cleanName(f.name);
+    const fromWhere = folder && (inSubfolder(f) || inFolder[folder] === 1 || genericName(own)) ? folder : genericName(own) ? "" : own;
     try {
       if (/\.(ai|pdf)$/i.test(f.name)) {
         const got = await extractLogos(f, (m) => toast(`${files.length > 1 ? `File ${i + 1} of ${files.length}: ` : ""}${m}`));
         if (!got.length) bad.push(`${f.name}: no logos found`);
+        // one logo: named from where it came from; many: the biggest one without a name of its own
+        const unnamed = got.filter((x) => !x.name);
+        if (fromWhere && unnamed.length) {
+          const big = got.length === 1 ? got[0] : unnamed.reduce((a, b) => ((b.size || 0) > (a.size || 0) ? b : a));
+          if (!big.name) big.name = fromWhere;
+        }
         found.push(...got);
       } else {
         if (files.length > 1) toast(`File ${i + 1} of ${files.length}: ${f.name}…`);
-        found.push(await pictureLogo(f));
+        const x = await pictureLogo(f);
+        x.name = fromWhere || x.name;
+        found.push(x);
       }
     } catch (err) { bad.push(`${f.name}: ${err.message}`); }
   }
@@ -1150,7 +1172,15 @@ $("logosFile").onchange = async (e) => {
     (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
     (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : " Check the names, then Save.") +
     (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !found.length ? "bad" : "");
-};
+}
+// many files at once, or a whole folder (with its folders inside: one per school)
+for (const id of ["logosFile", "logosFolder"]) {
+  $(id).onchange = async (e) => {
+    const files = [...e.target.files];
+    e.target.value = "";
+    if (files.length) await importLogoFiles(files);
+  };
+}
 $("logosClose").onclick = () => $("logosDlg").close();
 $("logosSave").onclick = async () => {
   const unnamed = logoEdit.list.filter((x) => !x.name.trim());

@@ -224,6 +224,7 @@ body:not(.teacher) #teacherHint{display:none}
   <p class="hint" style="margin:0 0 10px;max-width:640px">Each crystal gets its school's logo where the design's own logo was: the logo uploaded with the order, else the one here with the same school name. Import many files at once: an .ai with your logos (each school's name written under its logo, as live text if you can) — every logo is cut out by itself — or picture files named after their school (e.g. “SK TAMAN SERI PAGI.png”). Check each name, then Save.</p>
   <div class="logobar">
     <label class="btn" title="Pick many files at once: an .ai / .pdf with many logos (each cut out), or picture files (.png .jpg .svg .webp), each named by its file name">Import logos (.ai or pictures)<input type="file" id="logosFile" accept=".ai,.pdf,.png,.jpg,.jpeg,.svg,.webp" multiple hidden></label>
+    <label class="btn" title="Pick a folder: every .ai / picture in it and in its folders is imported, each logo named after its folder (one folder per school), else after its file">Import a folder<input type="file" id="logosFolder" webkitdirectory multiple hidden></label>
     <input id="logosSearch" type="search" placeholder="Search a school" aria-label="Search a school">
     <span id="logosNote" class="hint"></span>
   </div>
