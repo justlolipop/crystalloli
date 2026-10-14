@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-14e";
+const VERSION = "2026-10-14f";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1167,7 +1167,8 @@ async function importLogoFiles(all) {
       let got = [];
       try {
         if (/\.(ai|pdf)$/i.test(f.name)) {
-          got = await extractLogos(f, (m) => logoStatus(`${head}: ${m}  ${fresh.length} found so far.`));
+          // one logo per .ai (a sheet of the same logo, crop marks, a title: just that logo)
+          got = await extractLogos(f, (m) => logoStatus(`${head}: ${m}  ${fresh.length} found so far.`), { one: true });
           if (!got.length) bad.push(`${f.name}: no logos found`);
           // one logo: named from where it came from; many: the biggest one without a name of its own
           const unnamed = got.filter((x) => !x.name);

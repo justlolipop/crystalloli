@@ -1015,7 +1015,9 @@ export function hiResBackground(item, dpi) {
 // it (under it, else above): every logo cut out as a picture, named from those words when they're
 // live text. -> [{ data: png data URL, name }] in reading order. Pieces of one logo a little apart
 // (a crest and its ring) stay one logo; a white box behind them all is ignored.
-export async function extractLogos(file, progress) {
+// one: only the file's main logo — the one drawn most often (a sheet of the same logo), else the
+// biggest; crop marks and thin lines never count — named from the page's title when it has one
+export async function extractLogos(file, progress, { one = false } = {}) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") {
@@ -1038,8 +1040,11 @@ export async function extractLogos(file, progress) {
     const full = makeCanvas(W, H), bare = makeCanvas(W, H);
     await page.render({ canvasContext: full.ctx, viewport: vp, background: CLEAR }).promise;
     await drawBare(page, items, bare, vp, []);
-    const boxes = logoBlobs(bare.ctx.getImageData(0, 0, W, H).data, W, H);
+    const bareData = bare.ctx.getImageData(0, 0, W, H).data;
+    let boxes = logoBlobs(bareData, W, H);
     bare.canvas.width = bare.canvas.height = 0;
+    const allBoxes = boxes;
+    if (one) boxes = mainLogo(boxes, bareData, W);
     // the live words, as boxes in px on this page
     const words = items.filter((it) => it.str && it.str.trim()).map((it) => {
       const [x, y] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
@@ -1060,6 +1065,9 @@ export async function extractLogos(file, progress) {
       });
       if (best) named[best.i].push(wd);
     }
+    // the page's title (the biggest live words not under or over a logo): the name when there's one logo
+    const inAny = (wd) => allBoxes.some((b) => wd.cx > b.l && wd.cx < b.r && wd.cy > b.t && wd.cy < b.b);
+    const title = one ? pageTitle(words.filter((wd) => !inAny(wd) && !named.some((ws) => ws.includes(wd)))) : "";
     for (const [i, b] of boxes.entries()) {
       const pad = Math.round(Math.max(b.r - b.l, b.b - b.t) * 0.03);
       const x = Math.max(0, b.l - pad), y = Math.max(0, b.t - pad), w = Math.min(W, b.r + pad) - x, h = Math.min(H, b.b + pad) - y;
@@ -1068,7 +1076,7 @@ export async function extractLogos(file, progress) {
       c.ctx.drawImage(full.canvas, x, y, w, h, 0, 0, c.canvas.width, c.canvas.height);
       // the words in reading order: line by line (close tops), left to right
       const ws = named[i].sort((a, b2) => (Math.abs(a.t - b2.t) < (a.b - a.t) * 0.5 ? a.l - b2.l : a.t - b2.t));
-      const name = ws.map((wd) => wd.str).join(" ").replace(/\s+/g, " ").trim();
+      const name = ws.map((wd) => wd.str).join(" ").replace(/\s+/g, " ").trim() || title;
       // kept as a file in memory (a blob: address), not as a long text: hundreds of logos fit
       const blob = await new Promise((res) => c.canvas.toBlob(res, "image/png"));
       out.push({ data: blob ? URL.createObjectURL(blob) : c.canvas.toDataURL("image/png"), name, size: w * h, page: n, y: b.t, x: b.l });
@@ -1078,7 +1086,47 @@ export async function extractLogos(file, progress) {
     page.cleanup();
   }
   } finally { try { await doc.destroy(); } catch (e) {} }
-  return out.map(({ data, name, size }) => ({ data, name, size }));
+  // one logo for the whole file: of all its artboards, the biggest
+  const list = one && out.length > 1 ? [out.reduce((a, b) => (b.size > a.size ? b : a))] : out;
+  return list.map(({ data, name, size }) => ({ data, name, size }));
+}
+
+// the main logo of a page: crop marks and thin lines (little ink in their box) left out, then the
+// logo drawn most often (copies about the same size), else the biggest -> [that one box] or []
+function mainLogo(boxes, data, W) {
+  const inkOf = (b) => {
+    let n = 0;
+    const step = Math.max(1, Math.round(Math.max(b.r - b.l, b.b - b.t) / 80));
+    let all = 0;
+    for (let y = Math.round(b.t); y < b.b; y += step) for (let x = Math.round(b.l); x < b.r; x += step) {
+      all++;
+      if (data[(y * W + x) * 4 + 3] > 24) n++;
+    }
+    return all ? n / all : 0;
+  };
+  const area = (b) => (b.r - b.l) * (b.b - b.t);
+  const inked = boxes.filter((b) => inkOf(b) >= 0.1);
+  if (!inked.length) return [];
+  // and nothing much smaller than the biggest (crop marks, a small mark beside the logos)
+  const big = Math.max(...inked.map(area));
+  const real = inked.filter((b) => area(b) >= big * 0.15);
+  const same = (a, b) => Math.abs((a.r - a.l) / (b.r - b.l) - 1) < 0.06 && Math.abs((a.b - a.t) / (b.b - b.t) - 1) < 0.06;
+  let best = null;
+  for (const b of real) {
+    const copies = real.filter((o) => same(o, b)).length;
+    if (!best || copies > best.copies || (copies === best.copies && area(b) > area(best.b))) best = { b, copies };
+  }
+  return [best.b];
+}
+
+// the biggest words on a page, on one line, left to right ("SJKC BALAKONG"), or ""
+function pageTitle(words) {
+  const ws = words.filter((wd) => /[A-Za-z]{2}/.test(wd.str));
+  if (!ws.length) return "";
+  const tall = (wd) => wd.b - wd.t;
+  const top = ws.reduce((a, b) => (tall(b) > tall(a) ? b : a));
+  const line = ws.filter((wd) => Math.abs(wd.cy - top.cy) < tall(top) * 0.6 && tall(wd) > tall(top) * 0.7).sort((a, b) => a.l - b.l);
+  return line.map((wd) => wd.str).join(" ").replace(/\s+/g, " ").trim().slice(0, 80);
 }
 
 // the separate pictures drawn on a page (px): ink (not white, not see-through) joined up when a
