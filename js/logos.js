@@ -114,7 +114,9 @@ export async function withoutDoubles(list) {
     if (p && p.ink < 0.1) { junk++; x.junk = true; return; }
     const sameName = (k) => !nameKey(x.name) || !nameKey(k.x.name) || nameKey(x.name) === nameKey(k.x.name);
     const twin = p && keep.find((k) => k.p && Math.abs(k.p.ratio - p.ratio) < 0.12 &&
-      (sameName(k) ? distance(k.p.bits, p.bits) <= 40 : Math.abs(k.p.ratio - p.ratio) < 0.05 && greyDiff(k.p.grey, p.grey) < 7));
+      (sameName(k) ? distance(k.p.bits, p.bits) <= 40
+        // the quick look first: thousands of logos compared in pairs, the full colour check only for look-alikes
+        : Math.abs(k.p.ratio - p.ratio) < 0.05 && distance(k.p.bits, p.bits) <= 60 && greyDiff(k.p.grey, p.grey) < 7));
     if (!twin) { keep.push({ x, p }); return; }
     const big = (p.area || 0) > (twin.p.area || 0) ? { x, p } : twin, small = big === twin ? { x, p } : twin;
     small.x.gone = true;
