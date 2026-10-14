@@ -1017,7 +1017,9 @@ export function hiResBackground(item, dpi) {
 // (a crest and its ring) stay one logo; a white box behind them all is ignored.
 // one: only the file's main logo — the one drawn most often (a sheet of the same logo), else the
 // biggest; crop marks and thin lines never count — named from the page's title when it has one
-export async function extractLogos(file, progress, { one = false } = {}) {
+// sheets: only logo sheets (the same logo drawn 4 times or more, as printed for stickers); any other
+// .ai gives nothing (out.skipped says why)
+export async function extractLogos(file, progress, { one = false, sheets = false } = {}) {
   pdfjsLib.GlobalWorkerOptions.workerSrc = PDF_WORKER;
   const bytes = new Uint8Array(await file.arrayBuffer());
   if (String.fromCharCode(...bytes.slice(0, 5)) !== "%PDF-") {
@@ -1044,7 +1046,10 @@ export async function extractLogos(file, progress, { one = false } = {}) {
     let boxes = logoBlobs(bareData, W, H);
     bare.canvas.width = bare.canvas.height = 0;
     const allBoxes = boxes;
-    if (one) boxes = mainLogo(boxes, bareData, W);
+    if (one) {
+      const m = mainLogo(boxes, bareData, W);
+      boxes = sheets && m.copies < 4 ? [] : m.boxes;
+    }
     // the live words, as boxes in px on this page
     const words = items.filter((it) => it.str && it.str.trim()).map((it) => {
       const [x, y] = vp.convertToViewportPoint(it.transform[4], it.transform[5]);
@@ -1092,7 +1097,7 @@ export async function extractLogos(file, progress, { one = false } = {}) {
 }
 
 // the main logo of a page: crop marks and thin lines (little ink in their box) left out, then the
-// logo drawn most often (copies about the same size), else the biggest -> [that one box] or []
+// logo drawn most often (copies about the same size), else the biggest -> { boxes: [that one] or [], copies }
 function mainLogo(boxes, data, W) {
   const inkOf = (b) => {
     let n = 0;
@@ -1106,7 +1111,7 @@ function mainLogo(boxes, data, W) {
   };
   const area = (b) => (b.r - b.l) * (b.b - b.t);
   const inked = boxes.filter((b) => inkOf(b) >= 0.1);
-  if (!inked.length) return [];
+  if (!inked.length) return { boxes: [], copies: 0 };
   // and nothing much smaller than the biggest (crop marks, a small mark beside the logos)
   const big = Math.max(...inked.map(area));
   const real = inked.filter((b) => area(b) >= big * 0.15);
@@ -1116,7 +1121,7 @@ function mainLogo(boxes, data, W) {
     const copies = real.filter((o) => same(o, b)).length;
     if (!best || copies > best.copies || (copies === best.copies && area(b) > area(best.b))) best = { b, copies };
   }
-  return [best.b];
+  return { boxes: [best.b], copies: best.copies };
 }
 
 // the biggest words on a page, on one line, left to right ("SJKC BALAKONG"), or ""
