@@ -7,14 +7,18 @@ let rows = [], byPs = {}, byLabel = {};
 
 // font files kept online (PostScript name -> address), used when this computer doesn't have the font
 let files = {};
-// the free crystal fonts (SIL Open Font License, see fonts/OFL-*.txt) come with the studio, so
-// every computer shows them even without them installed or shared (fonts/install/ has them to
-// install for Illustrator); Britannic Bold isn't free to hand out: it comes from the PC, or from
-// "Share fonts"
-const BUILT_IN = Object.fromEntries(["Teko-Bold", "Playball-Regular", "KaushanScript-Regular", "GreatVibes-Regular",
+// the crystal fonts are all free (SIL Open Font License, see fonts/OFL-*.txt) and come with the
+// studio, so every computer shows them without installing or sharing anything (fonts/install/ has
+// them to install for Illustrator)
+const BUILT_IN = Object.fromEntries(["Teko-Bold", "Playball-Regular", "Gudea-Bold", "KaushanScript-Regular", "GreatVibes-Regular",
   "Montserrat-Bold", "Poppins-BoldItalic", "Oswald-Bold", "BarlowCondensed-Bold"]
   .map((ps) => [ps, new URL(`../fonts/${ps}.woff2`, import.meta.url).href]));
 export function setFontFiles(map) { files = map && typeof map === "object" ? map : {}; }
+
+// fonts that aren't free, swapped everywhere for the free one most like them (the same on every
+// computer and in the .ai): Britannic Bold (the name, before) -> Gudea Bold
+const FREE_FOR = { BritannicBold: "Gudea-Bold", "BritannicBold-Regular": "Gudea-Bold", "Britannic Bold": "Gudea-Bold" };
+export const freePs = (ps) => (ps && FREE_FOR[ps]) || ps;
 
 export const fontLabel = (r) => `${r[1]} ${r[2]}`.trim();
 const cssName = (ps) => "ps_" + String(ps).replace(/[^A-Za-z0-9]/g, "_");
@@ -22,7 +26,7 @@ const cssName = (ps) => "ps_" + String(ps).replace(/[^A-Za-z0-9]/g, "_");
 // The only fonts offered for the crystal's words: the J&E crystal's three (header, award, name), and
 // free ones like those on the crystal designs (brush and fine script titles, wide, italic and tall
 // narrow capitals)
-export const CRYSTAL_FONTS = [["Teko-Bold", "Teko", "Bold"], ["Playball-Regular", "Playball", "Regular"], ["BritannicBold", "Britannic Bold", "Regular"],
+export const CRYSTAL_FONTS = [["Teko-Bold", "Teko", "Bold"], ["Playball-Regular", "Playball", "Regular"], ["Gudea-Bold", "Gudea", "Bold"],
   ["KaushanScript-Regular", "Kaushan Script", "Regular"], ["GreatVibes-Regular", "Great Vibes", "Regular"],
   ["Montserrat-Bold", "Montserrat", "Bold"], ["Poppins-BoldItalic", "Poppins", "Bold Italic"],
   ["Oswald-Bold", "Oswald", "Bold"], ["BarlowCondensed-Bold", "Barlow Condensed", "Bold"]];
@@ -53,6 +57,7 @@ export function setFontList(list) {
 export function findFont(text) {
   const t = String(text || "").trim().replace(/^['"]|['"]$/g, "");
   if (!t) return null;
+  if (FREE_FOR[t] || /^britannic/i.test(t)) return "Gudea-Bold";
   if (byPs[t]) return t;
   const r = byLabel[t.toLowerCase()];
   return r ? r[0] : null;
@@ -66,6 +71,7 @@ export function describeFont(ps) {
 // Registers + loads the face. Resolves to the CSS family to draw with (a fallback if the font
 // isn't installed on this PC).
 export function useFont(ps, family, style) {
+  if (ps && FREE_FOR[ps]) { ps = FREE_FOR[ps]; family = style = undefined; } // never the paid one
   if (!ps) return Promise.resolve(family ? `"${family}", sans-serif` : "Arial");
   if (!faces[ps]) {
     const r = byPs[ps];

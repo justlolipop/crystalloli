@@ -2,7 +2,7 @@
 // Illustrator and the scanned templates use — so zoom only changes what you see on screen.
 
 import { $, debounce, round2 } from "./util.js";
-import { useFont, findFont, describeFont, cssToPs, fallbackFor } from "./fonts.js";
+import { useFont, findFont, describeFont, cssToPs, fallbackFor, freePs } from "./fonts.js";
 import { fieldFromText, fillPlaceholders } from "./library.js";
 import { fitSize } from "./measure.js";
 
@@ -181,7 +181,7 @@ export function makeText(t) {
     outerStroke: t.outerStroke || null, outerStrokeWidth: t.outerStroke ? t.outerStrokeWidth || 0 : 0,
     charSpacing: t.charSpacing || 0, lineHeight: t.lineHeight || 1, scaleX: t.scaleX || 1, scaleY: t.scaleY || 1, angle: t.angle || 0, flipX: !!t.flipX,
     data: {
-      role: "text", field: t.field || null, ps: t.ps || null, frame: t.frame || null, src: t.src ?? null, tplText: t.tplText || null,
+      role: "text", field: t.field || null, ps: freePs(t.ps) || null, frame: t.frame || null, src: t.src ?? null, tplText: t.tplText || null,
       defLeft: t.left, defTop: t.top, vs: t.scaleY || 1, maxW: t.maxW || null,
     },
   }));
@@ -425,7 +425,7 @@ export async function textsOf(entry) {
     const b = o.getBoundingRect(true, true), d = o.data || {};
     return {
       src: d.src ?? null, text: String(o.text ?? ""), l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height,
-      size: (o.fontSize || 12) * (o.scaleY || 1), fill: typeof o.fill === "string" ? o.fill : null, align: o.textAlign || "left", ps: d.ps || null,
+      size: (o.fontSize || 12) * (o.scaleY || 1), fill: typeof o.fill === "string" ? o.fill : null, align: o.textAlign || "left", ps: freePs(d.ps) || null,
       // the rest of its look, for an editable copy in Illustrator
       family: String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim(), hScale: (o.scaleX || 1) / (o.scaleY || 1),
       lineHeight: o.lineHeight || 1, tracking: o.charSpacing || 0, angle: o.angle || 0, flipX: !!o.flipX,
@@ -521,7 +521,7 @@ export async function layoutLike(scene) {
       if (s.data && s.data.userSize) p.fontSize = s.fontSize;
     }
     o.set(p);
-    o.data = { ...o.data, ps: s.data && s.data.ps, userFont: s.data && s.data.userFont, userSize: s.data && s.data.userSize, locked: s.data && s.data.locked };
+    o.data = { ...o.data, ps: s.data && freePs(s.data.ps), userFont: s.data && s.data.userFont, userSize: s.data && s.data.userSize, locked: s.data && s.data.locked };
   }
   for (const e of extras) {
     const c = await new Promise((r) => e.clone(r, PROPS));
