@@ -24,6 +24,7 @@
 .logocell img{width:100%;height:110px;object-fit:contain;background:#fff;border-radius:6px}
 .logocell input{width:100%;box-sizing:border-box}
 .logocell input:placeholder-shown{outline:1px solid #e0338a}
+.logocell input.guessed{outline:2px solid #e6b800}
 .logocell .x{position:absolute;top:4px;right:4px;border:0;background:rgba(0,0,0,.55);color:#fff;border-radius:50%;width:22px;height:22px;cursor:pointer}
 .tplnow{margin:0 0 8px}
 /* what only the admin sees (🔒 Admin, the password): changing designs for everyone */
@@ -228,6 +229,7 @@ body:not(.teacher) #teacherHint{display:none}
   <div class="logobar">
     <label class="btn" title="Pick many files at once: an .ai / .pdf with many logos (each cut out), or picture files (.png .jpg .svg .webp), each named by its file name">Import logos (.ai or pictures)<input type="file" id="logosFile" accept=".ai,.pdf,.png,.jpg,.jpeg,.svg,.webp" multiple hidden></label>
     <label class="btn" title="Pick a folder: every .ai / picture in it and in its folders is imported, each logo named after its folder (one folder per school), else after its file">Import a folder<input type="file" id="logosFolder" webkitdirectory multiple hidden></label>
+    <button type="button" id="logosRead" title="For the logos without a name: read the school's name printed in the picture and put it in the box, to check">Read names</button>
     <button type="button" id="logosSplit" title="Logos in the list that are a whole sheet (the same logo many times): keep just one of them">Split sheets</button>
     <button type="button" id="logosTidy" title="The same logo more than once (also under different names): keep only the biggest copy; and take out shapes that aren't logos (lines, crop marks)">Remove repeats</button>
     <input id="logosSearch" type="search" placeholder="Search a school" aria-label="Search a school">
