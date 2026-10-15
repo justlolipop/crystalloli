@@ -332,12 +332,12 @@ var OUTLINE_TEXT = JOB.outline !== false;
   function platformBoard(P, colorSpace) {
     if (!plat) {
       var d = app.documents.add(colorSpace, P.w, P.h);
-      plat = { doc: d, n: 1 };
-      d.artboards[0].name = "Platform 1";
+      plat = { doc: d, n: 1, kind: P.name || "Platform" };
+      d.artboards[0].name = plat.kind + " 1";
     } else {
       var a0 = plat.doc.artboards[0].artboardRect, k = plat.n, off = k * (P.w + 400);
       plat.doc.artboards.add([a0[0] + off, a0[1], a0[2] + off, a0[3]]);
-      plat.doc.artboards[k].name = "Platform " + (k + 1);
+      plat.doc.artboards[k].name = plat.kind + " " + (k + 1);
       plat.n++;
     }
     plat.x = P.w - P.right;
@@ -364,7 +364,7 @@ var OUTLINE_TEXT = JOB.outline !== false;
     return null;
   }
   function toPlatform(doc, r) {
-    var P = JOB.platform;
+    var P = r.platform || JOB.platform; // its own sheet (DTF for 80-B and R-100), else the printer's platform
     var key = String(r.design || r.file || "crystals");
     plat = plats[key] || null; // this design's platform (made by slotFor when there's none yet)
     app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
@@ -428,9 +428,9 @@ var OUTLINE_TEXT = JOB.outline !== false;
       var pl = plats[platKeys[i]];
       if (!pl.doc.pageItems.length) { try { pl.doc.close(SaveOptions.DONOTSAVECHANGES); } catch (e) {} notes.push("Nothing went on the platform of " + pl.label + "."); continue; }
       // named after the crystals' header (the school), their design and how many: "SK TAMAN SERI PAGI - 80-B DESIGN 2 x23"
-      var name = safe((pl.header || JOB.platformName || "PRINT AREA (PLATFORM)") + (pl.label !== "crystals" ? " - " + pl.label : "") + " x" + pl.pieces);
+      var name = safe((pl.header || JOB.platformName || "PRINT AREA (PLATFORM)") + (pl.label !== "crystals" ? " - " + pl.label : "") + " x" + pl.pieces + (pl.kind && pl.kind !== "Platform" ? " " + pl.kind : ""));
       pl.doc.saveAs(new File(outDir.fsName + "/" + name + ".ai"), new IllustratorSaveOptions());
-      notes.push(pl.label + ": " + pl.n + " platform" + (pl.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
+      notes.push(pl.label + ": " + pl.n + " " + (pl.kind === "Platform" ? "platform" : pl.kind + " sheet") + (pl.n === 1 ? "" : "s") + " saved as " + name + ".ai.");
     }
   }
 

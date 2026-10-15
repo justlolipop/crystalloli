@@ -16,6 +16,12 @@ const hex = (c) => {
 // The printer's platform (pt): 84 x 24 in. Crystals from the bottom right, leftwards, then the next
 // row up; margins and gaps as on the hand-made PRINT AREA (PLATFORM).ai (12 to a row, 2 rows; the left margin a little under the 740 measured, so 12 fit).
 export const PLATFORM = { w: 6048, h: 1728, left: 700, right: 276, top: 72, bottom: 184, gapX: 90, gapY: 92 };
+// The DTF film sheet (DFT TEMPLATE.ai: 290 x 500 mm, empty): the 80-B and R-100 crystals go on it,
+// filled the same way; 5 mm margins and 3 mm between crystals
+const MM = 72 / 25.4;
+export const DTF_SHEET = { name: "DFT", w: 822.047, h: 1417.32, left: 5 * MM, right: 5 * MM, top: 5 * MM, bottom: 5 * MM, gapX: 3 * MM, gapY: 3 * MM };
+// a crystal printed on DTF film: its type is 80-B or R-100 (in its design, file or name)
+export const onDtf = (...names) => names.some((n) => /(^|[^A-Z0-9])(80-?B|R-?100)(?![0-9])/i.test(String(n || "")));
 
 const clean = (s, n) => String(s || "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, n);
 
@@ -42,6 +48,8 @@ export async function vectorJob(list, label) {
       // the first line of its header (the school), for the file names
       header: clean(String(x.header || "").split("\n")[0], 60),
       design: String(x.design || it.name || "").replace(/^\s*(DTF\s+)?CRYSTAL\s*\/\s*/i, "").replace(/[\\/:*?"<>|]+/g, " ").replace(/\s+/g, " ").trim().slice(0, 60),
+      // 80-B and R-100: on the DTF sheet, not the printer's platform
+      ...(onDtf(x.design, it.file, it.name) ? { platform: DTF_SHEET } : {}),
     });
   }
   // more than one crystal: all on the print platform, as laid out by hand (PRINT AREA (PLATFORM).ai)
