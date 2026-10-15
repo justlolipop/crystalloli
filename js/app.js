@@ -6,7 +6,7 @@
 import { $, esc, debounce, toast, ask, askChoice, askText, safeName, downloadBlob, downloadDataUrl } from "./util.js";
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
-import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, getMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, logoFromSheetPicture, isMirrored } from "./library.js";
+import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, logoFromSheetPicture, isMirrored } from "./library.js";
 import { schoolKey, logoPicker, withoutDoubles } from "./logos.js";
 import { fontsToShare, shareFonts } from "./font-share.js";
 import { newId } from "./libitem.js";
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-15c";
+const VERSION = "2026-10-15d";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -565,15 +565,15 @@ $("applyAll").onclick = async () => {
 
 // Save as default template: where this design's header, position and name sit (and how big)
 // becomes its layout for every row and for the order website's preview; their font, colour and
-// outline become this design's look (other designs keep their own, from their .ai; only the font
-// is also offered to designs whose words were drawn as shapes). Rows changed by hand on this design start over.
+// outline become this design's look. Only this design changes: every other design keeps its own
+// (or the built-in look). Rows changed by hand on this design start over.
 $("saveDefault").onclick = async () => {
   const it = itemOf(S.key);
   if (!it || it.source !== "pdf") return toast("Pick a crystal design (.ai) first.", "bad");
   const texts = editor.objects().filter((o) => editor.isText(o) && o.data && MASTER_FIELDS.includes(o.data.field));
   if (!texts.length) return toast("This crystal has no header, position or name text to save.", "bad");
-  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline are kept for this design (other designs keep their own).`)) return;
-  const layout = { ...(it.layout || {}) }, look = { ...getMaster() }, mine = { ...(it.look || {}) };
+  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline are kept for this design only — no other design changes.`)) return;
+  const layout = { ...(it.layout || {}) }, mine = { ...(it.look || {}) };
   for (const o of texts) {
     const f = o.data.field, sy = o.scaleY || 1, size = Math.round(o.fontSize * sy * 100) / 100;
     let top = o.top, lines = String(o.text || "").split("\n").length;
@@ -590,11 +590,10 @@ $("saveDefault").onclick = async () => {
       w: Math.round(o.width * (o.scaleX || 1) * 100) / 100, text: f === "event_line_1" && lines < String(o.text || "").split("\n").length
         ? String(o.text || "").split("\n").slice(0, lines).join("\n") : String(o.text || "") };
     const family = String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim();
-    look[f] = { ps: o.data.ps || null, family: o.data.ps ? "" : family, bold: o.fontWeight === "bold", italic: o.fontStyle === "italic",
+    mine[f] = { ps: o.data.ps || null, family: o.data.ps ? "" : family, bold: o.fontWeight === "bold", italic: o.fontStyle === "italic",
       fill: o.fill, stroke: o.stroke || null, strokeWidth: o.strokeWidth || 0, paintFirst: o.paintFirst || "fill",
       strokeLineJoin: o.strokeLineJoin || "miter", outerStroke: o.outerStroke || null, outerStrokeWidth: o.outerStrokeWidth || 0,
       charSpacing: o.charSpacing || 0, lineHeight: o.lineHeight || 1, scaleX: Math.round(((o.scaleX || 1) / sy) * 1000) / 1000 };
-    mine[f] = look[f];
   }
   try {
     // the school's logo, as placed here: where (and how big) every school's logo goes on this design
@@ -602,14 +601,13 @@ $("saveDefault").onclick = async () => {
     const b = lg && lg.getBoundingRect(true, true);
     const logoBox = b ? { l: b.left, t: b.top, r: b.left + b.width, b: b.top + b.height } : undefined;
     Object.assign(it, await store.saveLibrary({ id: it.id, layout, logoBox, look: mine }));
-    setMaster(await store.saveMaster(look));
   } catch (e) { return toast(e.message, "bad"); }
   for (const k of Object.keys(S.edits)) if (k.endsWith("|" + S.key)) delete S.edits[k];
   // the other designs of the same .ai (A, B, C …): the same positions for them too, if wanted
   // (a design of another size gets them stretched to its size)
   const sibs = S.library.filter((x) => x.id !== it.id && x.file === it.file && x.source === "pdf");
   let copied = 0;
-  if (sibs.length && await ask(`Use the same positions, sizes and look for the other ${sibs.length} design${sibs.length === 1 ? "" : "s"} of ${it.file} too (${sibs.map((x) => x.name).join(", ")})?`)) {
+  if (sibs.length && await ask(`Use the same positions, sizes and look for the other ${sibs.length} design${sibs.length === 1 ? "" : "s"} of ${it.file} too (${sibs.map((x) => x.name).join(", ")})?`, "Yes, copy to them too")) {
     for (const sib of sibs) {
       try { await copyDefault(it, sib); copied++; } catch (e) { toast(e.message, "bad"); }
     }

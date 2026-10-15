@@ -163,8 +163,9 @@ async function masterTexts(item, row) {
     let text = fieldValue(row, f);
     if (!text.trim()) continue;
     const g = guess[f], s = saved[f];
-    // its look: the master template's (Save as default template), as before
-    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...(master[f] || {}) };
+    // its look: this design's own (Save as default template on this design), else the built-in one —
+    // never another design's
+    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...((item.look && item.look[f]) || {}) };
     // never words that can't be seen on the crystal: a dark colour, a light outline behind them,
     // a width and line height that draw something
     if (!darkEnough(look.fill)) look.fill = DEFAULT_MASTER[f].fill;
