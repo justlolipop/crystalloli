@@ -304,10 +304,13 @@ async function runInIllustrator(body) {
       }).filter(Boolean);
     }
   }
-  // many crystals: on the print platform (numbers only, in pt)
-  const P = body.platform && typeof body.platform === "object" ? body.platform : null;
-  const platform = P && ["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"].every((k) => Number.isFinite(+P[k]) && +P[k] >= 0)
-    ? Object.fromEntries(["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"].map((k) => [k, +P[k]])) : null;
+  // many crystals: on the print platform (numbers only, in pt, and a short name); a crystal may have
+  // a sheet of its own (the DTF sheet for 80-B and R-100)
+  const SHEET = ["w", "h", "left", "right", "top", "bottom", "gapX", "gapY"];
+  const sheet = (P) => P && typeof P === "object" && SHEET.every((k) => Number.isFinite(+P[k]) && +P[k] >= 0) && +P.w > 0 && +P.h > 0
+    ? { ...Object.fromEntries(SHEET.map((k) => [k, +P[k]])), ...(typeof P.name === "string" && /^[A-Za-z0-9 -]{1,20}$/.test(P.name) ? { name: P.name } : {}) } : null;
+  const platform = sheet(body.platform);
+  for (const r of rows) { const own = sheet(r.platform); if (own) r.platform = own; else delete r.platform; }
   const job = { folder: config().templateFolder, outDir, keepOpen: rows.length <= 5, outline: body.outline !== false && !rows.some((r) => r.master), rows,
     ...(platform && rows.reduce((n, r) => n + (Math.round(+r.qty) || 1), 0) > 1 ? { platform, keepOpen: true } : {}), ...(tag ? { label: tag } : {}) };
   const jsx = path.join(outDir, "_make.jsx");
@@ -339,7 +342,7 @@ const ONLINE_STUDIO = ["https://justlolipop.github.io"];
 // what the website may ask this PC for: 2 = crystals made from their original .ai (POST /api/illustrator
 // with master rows). Older copies only knew .svg files; the website says so then.
 const BRIDGE_VERSION = 2;
-const BUILD = "2026-10-13o"; // shown on the website, to tell which Crystal Studio answered
+const BUILD = "2026-10-15a"; // shown on the website, to tell which Crystal Studio answered
 function allowedOrigin(o) {
   if (!o) return true; // not from a web page
   if (/^http:\/\/(localhost|127\.0\.0\.1):\d+$/.test(o)) return true;
