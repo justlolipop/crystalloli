@@ -244,7 +244,10 @@ var OUTLINE_TEXT = JOB.outline !== false;
   // the artwork's own vector edges (the cut line), exactly as drawn in the .ai, within that box
   function fitArtboard(doc, r) {
     app.coordinateSystem = CoordinateSystem.DOCUMENTCOORDINATESYSTEM;
-    var a = doc.artboards[0].artboardRect, m = 4, u = null;
+    // the artboard takes the lines' full thickness (visible edges: a cut line isn't cropped in half
+    // on the platform); the size given is the cut line's path (geometric edges)
+    var a = doc.artboards[0].artboardRect, m = 4, u = null, gu = null;
+    var join = function (x, g) { return x ? [Math.min(x[0], g[0]), Math.max(x[1], g[1]), Math.max(x[2], g[2]), Math.min(x[3], g[3])] : [g[0], g[1], g[2], g[3]]; };
     for (var k = 0; k < doc.layers.length; k++) {
       var L = doc.layers[k];
       if (!L.visible) continue;
@@ -254,7 +257,8 @@ var OUTLINE_TEXT = JOB.outline !== false;
           if (it.parent.typename !== "Layer" || it.hidden) continue;
           var g = it.geometricBounds;
           if (outside(g, a)) continue;
-          u = u ? [Math.min(u[0], g[0]), Math.max(u[1], g[1]), Math.max(u[2], g[2]), Math.min(u[3], g[3])] : [g[0], g[1], g[2], g[3]];
+          u = join(u, it.visibleBounds);
+          gu = join(gu, g);
         } catch (e) {}
       }
     }
@@ -262,8 +266,10 @@ var OUTLINE_TEXT = JOB.outline !== false;
     var f = [Math.max(u[0], a[0] - m), Math.min(u[1], a[1] + m), Math.min(u[2], a[2] + m), Math.max(u[3], a[3] - m)];
     if (f[2] - f[0] < 10 || f[1] - f[3] < 10) return;
     doc.artboards[0].artboardRect = f;
-    notes.push("Row " + r.row + ": size " + mm(f[2] - f[0]) + " x " + mm(f[1] - f[3]) + " mm, as in the .ai.");
+    var c = [Math.max(gu[0], f[0]), Math.min(gu[1], f[1]), Math.min(gu[2], f[2]), Math.max(gu[3], f[3])];
+    notes.push("Row " + r.row + ": size " + mm(c[2] - c[0]) + " x " + mm(c[1] - c[3]) + " mm, as in the .ai.");
   }
+
   function mm(pt) { return Math.round(pt / 72 * 25.4 * 10) / 10; }
 
   // a dark, filled, long and low shape along the bottom of the design (box: [l, t, r, b], y up):
