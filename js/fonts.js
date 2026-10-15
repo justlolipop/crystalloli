@@ -7,6 +7,13 @@ let rows = [], byPs = {}, byLabel = {};
 
 // font files kept online (PostScript name -> address), used when this computer doesn't have the font
 let files = {};
+// the two free crystal fonts (SIL Open Font License, see fonts/OFL-*.txt) come with the studio, so
+// every computer shows them even without them installed or shared; Britannic Bold isn't free to
+// hand out: it comes from the PC, or from "Share fonts"
+const BUILT_IN = {
+  "Teko-Bold": new URL("../fonts/Teko-Bold.woff2", import.meta.url).href,
+  "Playball-Regular": new URL("../fonts/Playball-Regular.woff2", import.meta.url).href,
+};
 export function setFontFiles(map) { files = map && typeof map === "object" ? map : {}; }
 
 export const fontLabel = (r) => `${r[1]} ${r[2]}`.trim();
@@ -60,7 +67,7 @@ export function useFont(ps, family, style) {
     const fam = family || (r && r[1]) || "";
     const sty = style || (r && r[2]) || "";
     const locals = [ps, `${fam} ${sty}`.trim(), fam].filter(Boolean).map((n) => `local("${n.replace(/["\\]/g, "")}")`);
-    const online = files[ps] ? [`url("${files[ps].replace(/["\\]/g, "")}")`] : [];
+    const online = [files[ps], BUILT_IN[ps]].filter(Boolean).map((u) => `url("${u.replace(/["\\]/g, "")}")`);
     const entry = { css: cssName(ps), ok: null, fallback: fam ? `"${fam.replace(/"/g, "")}", sans-serif` : "Arial" };
     entry.promise = (async () => {
       // this PC's font first, else the one kept online; a font that loads but draws no letters (a
