@@ -80,7 +80,7 @@ const DEFAULT_MASTER = {
     strokeLineJoin: "round", lineHeight: 0.84, scaleX: 0.95 },
   position: { ps: "Playball-Regular", family: "Playball", fill: "#2c2e35", stroke: "#2c2e35", strokeWidth: 0.5, paintFirst: "fill",
     strokeLineJoin: "round", outerStroke: "#ffffff", outerStrokeWidth: 4, lineHeight: 0.92, scaleX: 0.952 },
-  event_line_1: { ps: "BritannicBold", family: "Britannic Bold", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
+  event_line_1: { ps: "Gudea-Bold", family: "Gudea", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
     strokeLineJoin: "round", lineHeight: 0.92, scaleX: 0.89 },
 };
 let master = {};
