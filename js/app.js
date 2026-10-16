@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16d";
+const VERSION = "2026-10-16e";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
