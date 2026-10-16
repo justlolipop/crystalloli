@@ -85,7 +85,13 @@ const keptPicture = (x) => {
 export function logoPicker({ logo, school }, list) {
   const own = toDataUrl(logo);
   const bySchool = logoFor(school, list);
-  const inWords = (r) => logoInText(r.event_header || "", list) ||
+  // no school with the order: the logo named exactly like the crystal's header's first line (what
+  // the preview's "Add the school's logo" names it then)
+  const byHeader = (r) => {
+    const k = schoolKey(String(r.event_header || "").split("\n")[0]);
+    return k && Array.isArray(list) ? list.find((x) => schoolKey(x.name) === k) || null : null;
+  };
+  const inWords = (r) => byHeader(r) || logoInText(r.event_header || "", list) ||
     logoInText(Object.values(r).filter((v) => typeof v === "string").join(" \n "), list);
   const pick = async (row) => {
     const o = await own;
