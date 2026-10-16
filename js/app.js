@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16h";
+const VERSION = "2026-10-16j";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1041,6 +1041,9 @@ $("saveBtn").onclick = saveDesign;
 // (the website's preview then shows them; every other order keeps the default template). They're
 // kept by what each crystal says (jenis plak + words) as it came from the website.
 async function orderCustom() {
+  // the order website's preview showed none changed for this order (e.g. reset by a new Excel):
+  // the saved ones aren't this order's any more, whatever is still in the database
+  if (S.noOwn) return {};
   // (saved with another Excel than the order's now: not this order's any more)
   try {
     const d = await store.loadDesign(orderDesignId(S.order)), data = (d && d.data) || {};
@@ -1062,6 +1065,7 @@ $("saveOrder").onclick = async () => {
   try {
     await store.saveDesign({ id: orderDesignId(S.order), name: `Order ${S.order} — its own crystals`, data: { order: S.order, custom, ...(S.excel ? { excel: S.excel } : {}) } });
     S.dirty = false;
+    S.noOwn = false; // saved now: these are the order's own
     toast(n ? `Saved ${n} crystal${n === 1 ? "" : "s"} for order ${S.order} only. Back to the website…`
       : `Order ${S.order} uses the default template again. Back to the website…`);
     // back to the order on the website (this tab was opened by its ✎ Edit; its preview already shows it)
@@ -1445,6 +1449,7 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
     S.logoFrom = { logo: opened.logo, school: opened.school };
     S.excel = typeof opened.excel === "string" ? opened.excel.slice(0, 2000) : "";
+    S.noOwn = opened.own === false;
     // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
     if (opened.role === "teacher") {
       document.body.classList.add("teacher");

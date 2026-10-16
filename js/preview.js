@@ -97,6 +97,9 @@ let order = null, custom = {};
 // files uploaded for it). Crystals saved "for this order only" belong to the Excel they were saved
 // with: once a new Excel is uploaded, they're thrown away and the default templates show again.
 let excel = "";
+// the order website didn't say which Excel the order's rows come from (an older copy of it, without
+// excelStampOf): a new Excel can't put these crystals back on the default template then
+const NO_EXCEL = " (⚠ the order website didn't say which Excel this order uses, so uploading a new Excel can't reset it: update the order website, or click ↺ Use the default design)";
 async function loadCustom() {
   custom = {};
   if (!order) return;
@@ -426,7 +429,7 @@ function showTab(g) {
     const g = slides[at].g;
     // the logo: its web address (a picture pasted into the order itself only when it's small)
     const lg = typeof logoFrom.logo === "string" && (/^https?:/.test(logoFrom.logo) || logoFrom.logo.length < 300000) ? logoFrom.logo : null;
-    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, logo: lg, school: logoFrom.school, excel, rows: g.tiles.map((t) => t.row) })), "_blank");
+    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, logo: lg, school: logoFrom.school, excel, own: Object.keys(custom).length > 0, rows: g.tiles.map((t) => t.row) })), "_blank");
   };
   draw();
 }
@@ -451,7 +454,7 @@ async function draw() {
   document.getElementById("vNext").disabled = one;
   document.getElementById("vJenis").textContent = sl.g.jenis;
   document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "") +
-    (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" : "") + (sl.t ? logoNote(sl.t.row) : "");
+    (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" + (excel ? "" : NO_EXCEL) : "") + (sl.t ? logoNote(sl.t.row) : "");
   document.getElementById("vEdit").hidden = !sl.it || !CAN_EDIT;
   // no school logo: Production can add it here (Teachers add pictures in Crystal Studio, Sales only looks)
   document.getElementById("vLogo").hidden = !(CAN_AI && sl.it && sl.t && pickLogo.which && !pickLogo.which(sl.t.row) && schoolOf(sl.t.row));
