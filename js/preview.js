@@ -104,18 +104,15 @@ async function loadCustom() {
   try { d = await store.loadDesign(orderDesignId(order)); } catch (e) { /* none yet */ }
   const data = (d && d.data) || {};
   const saved = data.custom || {};
-  if (excel && data.excel && data.excel !== excel) {
-    // a new Excel since: back to the default templates (cleared for everyone, by who may edit)
+  // a new Excel since (or saved before the Excel was kept with them: can't tell which came first, so
+  // taken as older): back to the default templates (cleared for everyone, by who may edit)
+  if (excel && data.excel !== excel) {
     if (CAN_EDIT && Object.keys(saved).length) {
       store.saveDesign({ id: orderDesignId(order), name: d.name || `Order ${order} — its own crystals`, data: { ...data, custom: {}, excel } }).catch(() => {});
     }
     return;
   }
   custom = saved;
-  // saved before the Excel was known: from now on it belongs to this one
-  if (excel && !data.excel && Object.keys(saved).length && CAN_EDIT) {
-    store.saveDesign({ id: orderDesignId(order), name: d.name || `Order ${order} — its own crystals`, data: { ...data, excel } }).catch(() => {});
-  }
 }
 // the school's logo (data URL, see logos.js) where this design's own logo was, or null
 // (a crystal's own: its school found in its words — see logoPicker)

@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16f";
+const VERSION = "2026-10-16g";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1044,7 +1044,7 @@ async function orderCustom() {
   // (saved with another Excel than the order's now: not this order's any more)
   try {
     const d = await store.loadDesign(orderDesignId(S.order)), data = (d && d.data) || {};
-    return S.excel && data.excel && data.excel !== S.excel ? {} : data.custom || {};
+    return S.excel && data.excel !== S.excel ? {} : data.custom || {};
   } catch (e) { return {}; }
 }
 $("saveOrder").onclick = async () => {
