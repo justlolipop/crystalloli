@@ -13,7 +13,7 @@ import { libraryScene, setMaster, autoCleanAll, hiResBackground, logoPlace, isMi
 import { logoPicker, schoolKey } from "./logos.js";
 import { newId } from "./libitem.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
-import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
+import { templateFor, contentKey, orderDesignId, excelStamp, TEXT_FIELDS } from "./jenis.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
 import { vectorJob } from "./vector-job.js";
 
@@ -535,7 +535,7 @@ window.addEventListener("message", (e) => {
     // the school's logo: uploaded with the order (logo), else the kept one for its school
     const from = { logo: typeof e.data.logo === "string" ? e.data.logo : null, school: typeof e.data.school === "string" ? e.data.school : null };
     const newLogo = from.logo !== logoFrom.logo || from.school !== logoFrom.school;
-    const ex = typeof e.data.excel === "string" ? e.data.excel.slice(0, 2000) : "";
+    const ex = excelStamp(e.data.excel);
     if (o !== order || newLogo || ex !== excel) {
       order = o;
       excel = ex;

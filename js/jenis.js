@@ -53,4 +53,14 @@ export const TEXT_FIELDS = ["event_header", "year", "position", "event_line_1", 
 export const normJenis = (v) => String(v || "").replace(/\s+/g, " ").trim();
 export const contentKey = (row) => normJenis(row.jenis_plak) + "\u0002" + TEXT_FIELDS.map((f) => String(row[f] || "")).join("\u0001");
 // where an order's own designs are saved (with the saved designs): "ORD-0030" -> "order-ord-0030"
+// which Excel an order's rows come from, as the order website says it (its uploaded files' paths and
+// when a corrected one came in), kept short: a long one (an order with many files) becomes a code of
+// all of it, never cut short — what changes with a new Excel comes at its end
+export function excelStamp(t) {
+  t = typeof t === "string" ? t : "";
+  if (t.length <= 200) return t;
+  let a = 0x811c9dc5, b = 5381;
+  for (let i = 0; i < t.length; i++) { const c = t.charCodeAt(i); a = Math.imul(a ^ c, 16777619) >>> 0; b = (Math.imul(b, 33) + c) >>> 0; }
+  return `#${t.length}-${a.toString(36)}-${b.toString(36)}`;
+}
 export const orderDesignId = (order) => ("order-" + String(order || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "")).slice(0, 40);
