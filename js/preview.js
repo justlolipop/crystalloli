@@ -10,7 +10,8 @@ import { esc } from "./util.js";
 import { setFontList, setFontFiles } from "./fonts.js";
 import { store, onLibraryChanged } from "./store.js";
 import { libraryScene, setMaster, autoCleanAll, hiResBackground, logoPlace, isMirrored } from "./library.js";
-import { logoPicker } from "./logos.js";
+import { logoPicker, schoolKey } from "./logos.js";
+import { newId } from "./libitem.js";
 import { renderOffscreen, svgOffscreen } from "./editor.js";
 import { templateFor, contentKey, orderDesignId, TEXT_FIELDS } from "./jenis.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
@@ -325,7 +326,8 @@ function showTab(g) {
   out.innerHTML = `
     <div class="vhead"><b id="vJenis"></b> <span id="vSub" class="muted"></span> <a href="#" class="edit" id="vEdit"
       title="Open this design in Crystal Studio with these rows, to change it and save it as the default">✎ Edit in Crystal Studio</a>
-      <a href="#" class="edit" id="vDefault" hidden title="This crystal was changed for this order only: throw that away and show it on the default template again (for everyone who sees this order)">↺ Use the default design</a></div>
+      <a href="#" class="edit" id="vDefault" hidden title="This crystal was changed for this order only: throw that away and show it on the default template again (for everyone who sees this order)">↺ Use the default design</a>
+      <label class="edit" id="vLogo" hidden title="Pick the school's logo (a picture): it's kept in Crystal Studio's School logos under this school's name, for every order of this school">⊕ Add the school's logo<input type="file" id="vLogoFile" accept=".png,.jpg,.jpeg,.webp,.svg" hidden></label></div>
     <div class="vrow">
       <button type="button" class="nav" id="vPrev" aria-label="Previous crystal">‹</button>
       <div class="stage" id="vStage"></div>
@@ -374,6 +376,34 @@ function showTab(g) {
       show(allRows);
     } catch (err) { alert("Couldn't change it: " + err.message); }
   };
+  // Production: the school's logo picked here goes into School logos, named as the school
+  document.getElementById("vLogoFile").onchange = async (e) => {
+    const f = e.target.files[0], sl = slides[at];
+    e.target.value = "";
+    if (!f || !sl || !sl.t) return;
+    const name = schoolOf(sl.t.row), sub = document.getElementById("vSub");
+    if (!name) return;
+    sub.textContent = `· adding the logo of ${name}…`;
+    try {
+      const url = URL.createObjectURL(f);
+      const img = await new Promise((ok, no) => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => no(new Error("that isn't a picture")); i.src = url; });
+      const k = Math.min(1, 800 / Math.max(img.naturalWidth || 800, img.naturalHeight || 800));
+      const c = document.createElement("canvas");
+      c.width = Math.max(1, Math.round((img.naturalWidth || 800) * k)); c.height = Math.max(1, Math.round((img.naturalHeight || 800) * k));
+      c.getContext("2d").drawImage(img, 0, 0, c.width, c.height);
+      URL.revokeObjectURL(url);
+      const blob = await new Promise((ok) => c.toBlob(ok, "image/png"));
+      if (!blob) throw new Error("couldn't read it");
+      const id = newId(), file = `logos/${id}.png`;
+      // the kept list as it is now (someone may have added logos since), with this school's old one replaced
+      const kept = (await store.logos().catch(() => logos)) || [], key = schoolKey(name);
+      const old = kept.filter((x) => schoolKey(x.name) === key).map((x) => x.file);
+      await store.saveLogos([...kept.filter((x) => schoolKey(x.name) !== key), { id, name, file }], [{ file, data: URL.createObjectURL(blob) }], old);
+      await reloadLibrary();
+    } catch (err) {
+      sub.textContent = "· couldn't add the logo: " + (err.message || err);
+    }
+  };
   document.getElementById("vEdit").onclick = (e) => {
     e.preventDefault();
     if (!CAN_EDIT) return;
@@ -407,6 +437,8 @@ async function draw() {
   document.getElementById("vSub").textContent = `· crystal ${at + 1} of ${slides.length}` + (sl.it ? ` · ×${sl.t.qty}` : "") +
     (sl.t && custom[rowKey(sl.g.jenis, sl.t.row)] ? " · ✎ changed for this order" : "") + (sl.t ? logoNote(sl.t.row) : "");
   document.getElementById("vEdit").hidden = !sl.it || !CAN_EDIT;
+  // no school logo: Production can add it here (Teachers add pictures in Crystal Studio, Sales only looks)
+  document.getElementById("vLogo").hidden = !(CAN_AI && sl.it && sl.t && pickLogo.which && !pickLogo.which(sl.t.row) && schoolOf(sl.t.row));
   document.getElementById("vDefault").hidden = !(sl.t && CAN_EDIT && order && custom[rowKey(sl.g.jenis, sl.t.row)]);
   document.getElementById("vCap").textContent = sl.t ? [sl.t.row.category, caption(sl.t.row)].filter(Boolean).join(" · ") : "";
   document.getElementById("vZoom").textContent = Math.round(zoom * 100) + "%";
