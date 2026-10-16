@@ -93,10 +93,29 @@ const rowKey = (jenis, row) => contentKey({ ...row, jenis_plak: jenis });
 // this order's own designs (changed in Crystal Studio and saved "for this order only"):
 // content key -> the edited design. Shown instead of the default for those crystals.
 let order = null, custom = {};
+// excel: which Excel the order's rows come from now (the order website sends the path(s) of the
+// files uploaded for it). Crystals saved "for this order only" belong to the Excel they were saved
+// with: once a new Excel is uploaded, they're thrown away and the default templates show again.
+let excel = "";
 async function loadCustom() {
   custom = {};
   if (!order) return;
-  try { const d = await store.loadDesign(orderDesignId(order)); custom = (d && d.data && d.data.custom) || {}; } catch (e) { /* none yet */ }
+  let d = null;
+  try { d = await store.loadDesign(orderDesignId(order)); } catch (e) { /* none yet */ }
+  const data = (d && d.data) || {};
+  const saved = data.custom || {};
+  if (excel && data.excel && data.excel !== excel) {
+    // a new Excel since: back to the default templates (cleared for everyone, by who may edit)
+    if (CAN_EDIT && Object.keys(saved).length) {
+      store.saveDesign({ id: orderDesignId(order), name: d.name || `Order ${order} — its own crystals`, data: { ...data, custom: {}, excel } }).catch(() => {});
+    }
+    return;
+  }
+  custom = saved;
+  // saved before the Excel was known: from now on it belongs to this one
+  if (excel && !data.excel && Object.keys(saved).length && CAN_EDIT) {
+    store.saveDesign({ id: orderDesignId(order), name: d.name || `Order ${order} — its own crystals`, data: { ...data, excel } }).catch(() => {});
+  }
 }
 // the school's logo (data URL, see logos.js) where this design's own logo was, or null
 // (a crystal's own: its school found in its words — see logoPicker)
@@ -410,7 +429,7 @@ function showTab(g) {
     const g = slides[at].g;
     // the logo: its web address (a picture pasted into the order itself only when it's small)
     const lg = typeof logoFrom.logo === "string" && (/^https?:/.test(logoFrom.logo) || logoFrom.logo.length < 300000) ? logoFrom.logo : null;
-    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, logo: lg, school: logoFrom.school, rows: g.tiles.map((t) => t.row) })), "_blank");
+    window.open("./#order=" + encodeURIComponent(JSON.stringify({ name: g.jenis, order, role: ROLE, logo: lg, school: logoFrom.school, excel, rows: g.tiles.map((t) => t.row) })), "_blank");
   };
   draw();
 }
@@ -516,8 +535,10 @@ window.addEventListener("message", (e) => {
     // the school's logo: uploaded with the order (logo), else the kept one for its school
     const from = { logo: typeof e.data.logo === "string" ? e.data.logo : null, school: typeof e.data.school === "string" ? e.data.school : null };
     const newLogo = from.logo !== logoFrom.logo || from.school !== logoFrom.school;
-    if (o !== order || newLogo) {
+    const ex = typeof e.data.excel === "string" ? e.data.excel.slice(0, 2000) : "";
+    if (o !== order || newLogo || ex !== excel) {
       order = o;
+      excel = ex;
       logoFrom = from;
       pics.clear();
       smalls.clear();

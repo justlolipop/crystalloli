@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16c";
+const VERSION = "2026-10-16d";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1041,7 +1041,11 @@ $("saveBtn").onclick = saveDesign;
 // (the website's preview then shows them; every other order keeps the default template). They're
 // kept by what each crystal says (jenis plak + words) as it came from the website.
 async function orderCustom() {
-  try { const d = await store.loadDesign(orderDesignId(S.order)); return (d && d.data && d.data.custom) || {}; } catch (e) { return {}; }
+  // (saved with another Excel than the order's now: not this order's any more)
+  try {
+    const d = await store.loadDesign(orderDesignId(S.order)), data = (d && d.data) || {};
+    return S.excel && data.excel && data.excel !== S.excel ? {} : data.custom || {};
+  } catch (e) { return {}; }
 }
 $("saveOrder").onclick = async () => {
   if (!S.order) return;
@@ -1056,7 +1060,7 @@ $("saveOrder").onclick = async () => {
   }
   $("saveOrder").disabled = true;
   try {
-    await store.saveDesign({ id: orderDesignId(S.order), name: `Order ${S.order} — its own crystals`, data: { order: S.order, custom } });
+    await store.saveDesign({ id: orderDesignId(S.order), name: `Order ${S.order} — its own crystals`, data: { order: S.order, custom, ...(S.excel ? { excel: S.excel } : {}) } });
     S.dirty = false;
     toast(n ? `Saved ${n} crystal${n === 1 ? "" : "s"} for order ${S.order} only. Back to the website…`
       : `Order ${S.order} uses the default template again. Back to the website…`);
@@ -1440,6 +1444,7 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.sourceName = opened.name || "Order";
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
     S.logoFrom = { logo: opened.logo, school: opened.school };
+    S.excel = typeof opened.excel === "string" ? opened.excel.slice(0, 2000) : "";
     // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
     if (opened.role === "teacher") {
       document.body.classList.add("teacher");
