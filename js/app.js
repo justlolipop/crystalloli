@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16j";
+const VERSION = "2026-10-16k";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1040,6 +1040,8 @@ $("saveBtn").onclick = saveDesign;
 // opened from an order on the website: the crystals changed here can be kept for that order only
 // (the website's preview then shows them; every other order keeps the default template). They're
 // kept by what each crystal says (jenis plak + words) as it came from the website.
+// a short code for an Excel stamp (to tell two apart at a glance)
+const excelCode = (t) => { let h = 0; for (const c of String(t)) h = (h * 31 + c.charCodeAt(0)) >>> 0; return h.toString(36).slice(-4).toUpperCase(); };
 async function orderCustom() {
   // the order website's preview showed none changed for this order (e.g. reset by a new Excel):
   // the saved ones aren't this order's any more, whatever is still in the database
@@ -1458,7 +1460,11 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
       $("backToOrder").before($("saveOrder")); // the Excel panel is hidden: Save goes up top
     }
     S.origKeys = S.rows.map(contentKey);
-    $("srcHint").textContent = `${S.sourceName} · ${S.rows.length} row${S.rows.length === 1 ? "" : "s"} from the order website`;
+    $("srcHint").textContent = `${S.sourceName} · ${S.rows.length} row${S.rows.length === 1 ? "" : "s"} from the order website` +
+      // which Excel the website said the rows come from (a short code that changes with each new Excel), so a
+      // new upload can be seen to have arrived; none: the website is an older copy and can't reset the edits
+      (S.excel ? ` · Excel #${excelCode(S.excel)}` : " · ⚠ the order website didn't say which Excel (update it)") +
+      (S.noOwn ? " · default templates (nothing changed for this order)" : "");
   }
   // the schools' logos: each crystal gets its own (see logos.js logoPicker)
   try { const list = await store.logos(); pickLogo = logoPicker(S.logoFrom || {}, Array.isArray(list) ? list : []); } catch (e) {}
