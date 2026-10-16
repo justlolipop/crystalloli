@@ -7,7 +7,7 @@ import { $, esc, debounce, toast, ask, askChoice, askText, safeName, downloadBlo
 import { setFontList, setFontFiles, fallbackFor, describeFont } from "./fonts.js";
 import { readWorkbook, usableSheets, defaultSheet, readSheet } from "./excel.js";
 import { libraryScene, importFile, hiResBackground, fieldValue, setFieldValue, MASTER_FIELDS, setMaster, pieceAt, piecesIn, redrawBackground, autoCleanAll, CLEAN_VERSION, logoPlace, extractLogos, logoFromSheetPicture, isMirrored } from "./library.js";
-import { schoolKey, logoPicker, withoutDoubles } from "./logos.js";
+import { schoolKey, logoPicker, withoutDoubles, schoolNameFrom } from "./logos.js";
 import { fontsToShare, shareFonts } from "./font-share.js";
 import { newId } from "./libitem.js";
 import { illustratorScript } from "./illustrator.js";
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-15e";
+const VERSION = "2026-10-16a";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1090,7 +1090,7 @@ function renderLogos() {
   const q = schoolKey($("logosSearch").value);
   $("logosList").innerHTML = logoEdit.list.map((x, i) => (q && !schoolKey(x.name).includes(q) ? "" :
     `<div class="logocell"><img alt="" loading="lazy" decoding="async" src="${esc(x.data || fileUrl(x.file))}">` +
-    `<input data-i="${i}" value="${esc(x.name)}" placeholder="School name" aria-label="School name">` +
+    `<input data-i="${i}" value="${esc(x.name)}" placeholder="School name" aria-label="School name"${x.guessed ? ' class="guessed" title="Read from the logo: check it"' : ""}>` +
     `<button type="button" class="x" data-del="${i}" title="Delete this logo" aria-label="Delete this logo">✕</button></div>`)).join("") ||
     `<p class="hint">No logos yet. Import an .ai with your schools' logos.</p>`;
   const unnamed = logoEdit.list.filter((x) => !x.name.trim()).length;
@@ -1101,6 +1101,7 @@ $("logosList").addEventListener("input", (e) => {
   const i = e.target.dataset.i;
   if (i == null) return;
   logoEdit.list[+i].name = e.target.value;
+  if (logoEdit.list[+i].guessed) { delete logoEdit.list[+i].guessed; e.target.classList.remove("guessed"); e.target.removeAttribute("title"); }
   const unnamed = logoEdit.list.filter((x) => !x.name.trim()).length;
   $("logosNote").textContent = `${logoEdit.list.length} logo${logoEdit.list.length === 1 ? "" : "s"}` + (unnamed ? ` · ${unnamed} without a school name (type it in)` : "");
 });
@@ -1153,7 +1154,7 @@ async function importLogoFiles(all) {
   // how many logo files each folder holds: a folder with one is that school's, so it names it
   const inFolder = {};
   for (const f of files) { const d = folderOf(f); if (d) inFolder[d] = (inFolder[d] || 0) + 1; }
-  const busy = ["logosFile", "logosFolder", "logosSplit", "logosTidy", "logosSave"];
+  const busy = ["logosFile", "logosFolder", "logosRead", "logosSplit", "logosTidy", "logosSave"];
   const setBusy = (on) => {
     for (const id of busy) { const el = $(id); el.disabled = on; const l = el.closest("label"); if (l) l.classList.toggle("disabled", on); }
     $("logosStop").hidden = !on;
@@ -1202,12 +1203,16 @@ async function importLogoFiles(all) {
     logoEdit.list = logoEdit.list.filter((x) => !fresh.includes(x));
     const { dropped, junk } = await tidyLogos(fresh);
     renderLogos();
+    // the new ones without a name: their school's name read from the picture, to check
+    let read = 0;
+    if (fresh.some((x) => !x.name)) { try { read = await readNames(fresh); } catch (e) {} renderLogos(); }
     const unnamed = fresh.filter((x) => !x.name).length;
     logoStatus(`${logoStop ? `Stopped after ${done} of ${files.length} files. ` : ""}Found ${fresh.length} new logo${fresh.length === 1 ? "" : "s"} in ${done} file${done === 1 ? "" : "s"}.` +
       (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
       (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
       (skipped ? ` ${skipped} .ai file${skipped === 1 ? " wasn't a logo sheet" : "s weren't logo sheets"} (the same logo many times), so skipped.` : "") +
-      (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : "") + " Check them, then Save." +
+      (read ? ` ${read} name${read === 1 ? " was" : "s were"} read from the logos (outlined in yellow).` : "") +
+      (unnamed ? ` ${unnamed} still without a name (kept: type it in when you know it).` : "") + " Check them, then Save." +
       (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !fresh.length);
   } finally { setBusy(false); logoBar(0, 0); }
 }
@@ -1223,6 +1228,83 @@ async function tidyLogos(fresh = []) {
   fresh.splice(0, fresh.length, ...back.filter((x) => x.data && !x.file));
   return { dropped, junk };
 }
+// Reading the words printed in a logo (OCR, Tesseract.js, loaded the first time it's used): for the
+// logos without a name, the school's name read from the picture is put in their box, marked to check
+const OCR_JS = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+let ocrLoading = null;
+function loadOcr() {
+  if (window.Tesseract) return Promise.resolve(window.Tesseract);
+  if (!ocrLoading) ocrLoading = new Promise((ok, no) => {
+    const sc = document.createElement("script");
+    sc.src = OCR_JS;
+    sc.onload = () => ok(window.Tesseract);
+    sc.onerror = () => { ocrLoading = null; no(new Error("the word reader couldn't be loaded (internet?)")); };
+    document.head.appendChild(sc);
+  });
+  return ocrLoading;
+}
+// a logo picture, bigger and in grey: read better
+async function ocrPicture(src) {
+  const img = await new Promise((ok, no) => { const im = new Image(); im.crossOrigin = "anonymous"; im.onload = () => ok(im); im.onerror = no; im.src = src; });
+  const k = Math.max(1, 1400 / Math.max(img.naturalWidth || 1, img.naturalHeight || 1));
+  const c = document.createElement("canvas");
+  c.width = Math.round((img.naturalWidth || 1) * k); c.height = Math.round((img.naturalHeight || 1) * k);
+  const x = c.getContext("2d", { willReadFrequently: true });
+  x.fillStyle = "#fff"; x.fillRect(0, 0, c.width, c.height);
+  x.drawImage(img, 0, 0, c.width, c.height);
+  const d = x.getImageData(0, 0, c.width, c.height);
+  for (let i = 0; i < d.data.length; i += 4) {
+    const g = d.data[i] * 0.299 + d.data[i + 1] * 0.587 + d.data[i + 2] * 0.114;
+    d.data[i] = d.data[i + 1] = d.data[i + 2] = g;
+  }
+  x.putImageData(d, 0, 0);
+  return c;
+}
+// the school's name read from each of these logos (only those still without one) -> how many found
+async function readNames(todo) {
+  todo = todo.filter((x) => !String(x.name || "").trim());
+  if (!todo.length) return 0;
+  let worker = null, found = 0;
+  try {
+    logoStatus("Getting the word reader ready (the first time takes a little while)…");
+    const T = await loadOcr();
+    worker = await T.createWorker("eng", 1, window.CRYSTAL_OCR || {});
+    for (const [i, x] of todo.entries()) {
+      logoStatus(`Reading the school names from the logos… ${i + 1} of ${todo.length}${found ? `, ${found} found` : ""}`);
+      logoBar(i, todo.length);
+      try {
+        const pic = await ocrPicture(x.data || fileUrl(x.file));
+        // the page as lines first; nothing found: words anywhere on it
+        let name = schoolNameFrom((await worker.recognize(pic)).data.text);
+        if (!name) {
+          await worker.setParameters({ tessedit_pageseg_mode: "11" });
+          name = schoolNameFrom((await worker.recognize(pic)).data.text);
+          await worker.setParameters({ tessedit_pageseg_mode: "3" });
+        }
+        pic.width = pic.height = 0;
+        if (name && !String(x.name || "").trim()) { x.name = name; x.guessed = true; found++; renderLogos(); }
+      } catch (e) {}
+    }
+  } finally {
+    if (worker) { try { await worker.terminate(); } catch (e) {} }
+    logoBar(0, 0);
+  }
+  return found;
+}
+$("logosRead").onclick = async () => {
+  const todo = logoEdit.list.filter((x) => !String(x.name || "").trim());
+  if (!todo.length) return logoStatus("Every logo has a name already.");
+  $("logosRead").disabled = true;
+  try {
+    const found = await readNames(todo);
+    renderLogos();
+    logoStatus(found ? `${found} of ${todo.length} name${found === 1 ? "" : "s"} read from the logos (outlined in yellow): check each one, fix it if needed, then Save.`
+      : "No school names could be read from these logos: type them in (or keep them without a name).");
+  } catch (e) {
+    logoStatus("Couldn't read the names: " + e.message, true);
+  } finally { $("logosRead").disabled = false; }
+};
+
 // sheets already in the list (the same logo many times, saved as one picture): each becomes one logo
 $("logosSplit").onclick = async () => {
   const list = logoEdit.list;
@@ -1265,14 +1347,13 @@ for (const id of ["logosFile", "logosFolder"]) {
 }
 $("logosClose").onclick = () => $("logosDlg").close();
 $("logosSave").onclick = async () => {
-  const unnamed = logoEdit.list.filter((x) => !x.name.trim());
-  if (unnamed.length && !await ask(`${unnamed.length} logo${unnamed.length === 1 ? " has" : "s have"} no school name and won't be kept. Save the others?`)) return;
-  // one logo per school: the one higher in the list (just imported) wins
+  // one logo per school: the one higher in the list (just imported) wins; a logo without a name is
+  // kept too (no order finds it by its school until it has one)
   const seen = new Set(), list = [], add = [], drop = [...logoEdit.drop];
   for (const x of logoEdit.list) {
     const k = schoolKey(x.name);
-    if (!k || seen.has(k)) { if (x.file) drop.push(x.file); continue; }
-    seen.add(k);
+    if (k && seen.has(k)) { if (x.file) drop.push(x.file); continue; }
+    if (k) seen.add(k);
     const file = x.file || `logos/${x.id}.png`;
     if (x.data) add.push({ file, data: x.data });
     list.push({ id: x.id, name: x.name.trim(), file });

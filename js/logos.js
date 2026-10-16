@@ -156,3 +156,32 @@ async function fingerprint(src) {
 }
 const distance = (a, b) => a.reduce((n, v, i) => n + (v !== b[i] ? 1 : 0), 0);
 const greyDiff = (a, b) => a.reduce((n, v, i) => n + Math.abs(v - b[i]), 0) / a.length;
+
+// The school's name in the words read from a logo picture (OCR: uneven, often with stray letters)
+// -> the name ("SK TAMAN SERI PAGI"), or "" when none can be told. The line with a school word
+// (SEKOLAH, SK, SMK, SJK(C) …) and what follows it, else the longest line of real words.
+const SCHOOL_WORD = /^(SEKOLAH|SK|SMK|SJK|SJKC|SJKT|SMJK|SMKA|SMA|SRA|SABK|SBP|MRSM|KAFA|KOLEJ|MAKTAB|TADIKA|PASTI|SEK|KEBANGSAAN|MENENGAH|RENDAH|AGAMA)$/;
+const STATE = /^(JOHOR|KEDAH|KELANTAN|MELAKA|NEGERI SEMBILAN|PAHANG|PERAK|PERLIS|PULAU PINANG|PENANG|SABAH|SARAWAK|SELANGOR|TERENGGANU|KUALA LUMPUR|PUTRAJAYA|LABUAN|WILAYAH PERSEKUTUAN)?( ?DARUL [A-Z]+| ?DARUL [A-Z]+ [A-Z]+)?$/;
+export function schoolNameFrom(text) {
+  const lines = String(text || "").toUpperCase().split(/\n+/).map((l) => l
+    .replace(/\bS\.\s?K\.?(?=\s|$)/g, "SK").replace(/\bS\.\s?M\.\s?K\.?(?=\s|$)/g, "SMK")
+    .replace(/\bSJK\s*\(\s*([CT])\s*\)/g, "SJK($1)")
+    .replace(/[^A-Z0-9()&'\- ]+/g, " ").split(/\s+/)
+    // a real word: 2+ letters (or a number like 2), mostly letters
+    .filter((w) => w && (/^[A-Z][A-Z'\-]+$/.test(w) || /^SJK\([CT]\)$/.test(w) || /^\d{1,2}$/.test(w)))
+    .join(" ")).filter((l) => l.split(" ").some((w) => w.length >= 3));
+  const key = (l) => l.split(" ").some((w) => SCHOOL_WORD.test(w) || /^SJK\([CT]\)$/.test(w));
+  const at = lines.findIndex(key);
+  let name = "";
+  if (at >= 0) {
+    // "SEKOLAH KEBANGSAAN" / "TAMAN SERI PAGI" on two lines: one name
+    name = lines[at];
+    // (not a state's name under it: "SELANGOR", "DARUL EHSAN")
+    for (let k = at + 1; k < lines.length && name.split(" ").length < 3 && !STATE.test(lines[k]); k++) name += " " + lines[k];
+  } else {
+    const real = lines.filter((l) => l.split(" ").filter((w) => w.length >= 3).length >= 2);
+    name = real.sort((a, b) => b.length - a.length)[0] || "";
+  }
+  return name.replace(/\s+/g, " ").trim().slice(0, 80);
+}
+
