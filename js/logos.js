@@ -63,6 +63,9 @@ export function logoInText(text, list) {
   for (const x of Array.isArray(list) ? list : []) {
     const k = schoolKey(x.name), ws = k.split(" ");
     if (k.length < 5) continue;
+    // only a school's logo (its name has a school word: SK, SMK, SJKC, SEKOLAH …): a logo named after
+    // some event or words ("HARI ANUGERAH KECEMERLANG MURID") mustn't be taken for the crystal's words
+    if (!ws.some((w) => SCHOOL_WORD.test(w) || /^(MSSD|MSS|MSSN)$/.test(w))) continue;
     if (!t.includes(" " + k + " ") && !(ws.length >= 3 && ws.every((w) => have.has(w)))) continue;
     if (!best || k.length > best.k.length) best = { x, k };
   }
