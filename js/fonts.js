@@ -11,7 +11,7 @@ let files = {};
 // studio, so every computer shows them without installing or sharing anything (fonts/install/ has
 // them to install for Illustrator)
 const BUILT_IN = Object.fromEntries(["Teko-Bold", "Playball-Regular", "Gudea-Bold", "KaushanScript-Regular", "GreatVibes-Regular",
-  "Montserrat-Bold", "Poppins-BoldItalic", "Oswald-Bold", "BarlowCondensed-Bold"]
+  "Montserrat-Bold", "Poppins-BoldItalic", "Oswald-Bold", "BarlowCondensed-Bold", "Cinzel-Bold", "BebasNeue-Regular", "Pacifico-Regular"]
   .map((ps) => [ps, new URL(`../fonts/${ps}.woff2`, import.meta.url).href]));
 export function setFontFiles(map) { files = map && typeof map === "object" ? map : {}; }
 
@@ -29,7 +29,9 @@ const cssName = (ps) => "ps_" + String(ps).replace(/[^A-Za-z0-9]/g, "_");
 export const CRYSTAL_FONTS = [["Teko-Bold", "Teko", "Bold"], ["Playball-Regular", "Playball", "Regular"], ["Gudea-Bold", "Gudea", "Bold"],
   ["KaushanScript-Regular", "Kaushan Script", "Regular"], ["GreatVibes-Regular", "Great Vibes", "Regular"],
   ["Montserrat-Bold", "Montserrat", "Bold"], ["Poppins-BoldItalic", "Poppins", "Bold Italic"],
-  ["Oswald-Bold", "Oswald", "Bold"], ["BarlowCondensed-Bold", "Barlow Condensed", "Bold"]];
+  ["Oswald-Bold", "Oswald", "Bold"], ["BarlowCondensed-Bold", "Barlow Condensed", "Bold"],
+  // engraved award capitals, tall headline capitals, a round handwritten script
+  ["Cinzel-Bold", "Cinzel", "Bold"], ["BebasNeue-Regular", "Bebas Neue", "Regular"], ["Pacifico-Regular", "Pacifico", "Regular"]];
 
 // rows: [[postscriptName, family, style], ...] (the font list kept online / on this PC). Only the
 // three crystal fonts are offered in the font box, whatever else is in the list.
