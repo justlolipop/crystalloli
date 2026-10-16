@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16a";
+const VERSION = "2026-10-16c";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -158,7 +158,14 @@ function renderElements() {
     return `<button class="${cls}" draggable="true" data-field="${esc(c.key)}" title="${on ? "On the design — click to select it" : "Drag onto a text to make it show this column, or click to add it as new text"}">` +
       `<span class="k">${esc(c.label)}</span><span class="v">${v ? esc(v.replace(/\n/g, " ⏎ ")) : "<i>empty</i>"}</span></button>`;
   }).join("") || `<p class="hint">This sheet has no columns.</p>`;
-  $("meta").innerHTML = row().qty ? `Qty <b>${esc(row().qty)}</b>` : "";
+  // no school logo for this crystal: said plainly, with the school it looked for
+  let noLogo = "";
+  const it0 = itemOf(S.key);
+  if (it0 && it0.source === "pdf" && pickLogo.which && !pickLogo.which(rw)) {
+    const sch = String((S.logoFrom && S.logoFrom.school) || "").trim() || String(rw.event_header || "").split("\n")[0].trim();
+    noLogo = `<span class="warn">⚠ Can't show the school logo${sch ? ` for “${esc(sch)}”` : ""}: no logo with that school's name in School logos (add it, named exactly like this).</span>`;
+  }
+  $("meta").innerHTML = [row().qty ? `Qty <b>${esc(row().qty)}</b>` : "", noLogo].filter(Boolean).join(" · ");
     const texts = editor.objects().filter((o) => editor.isText(o));
   $("elList").innerHTML = texts.map((o, i) => {
     const f = o.data && o.data.field, col = f && S.columns.find((c) => c.key === f);
