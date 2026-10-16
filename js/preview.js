@@ -112,7 +112,16 @@ function logoNote(row) {
   if (!pickLogo.which) return "";
   const w = pickLogo.which(row);
   if (w) return " · logo: " + w.name;
-  return pickLogo.count ? " · no school logo found for this school (add it in Crystal Studio › School logos, named as on the crystal)" : " · no school logos in Crystal Studio yet";
+  return " · ⚠ " + logoMissing(row);
+}
+// the school a crystal is for: the order's, else its header's first line
+const schoolOf = (row) => String(logoFrom.school || "").trim() || String((row && row.event_header) || "").split("\n")[0].trim();
+// why a crystal has no school logo, said plainly (with what to do)
+function logoMissing(row) {
+  const sch = schoolOf(row);
+  return pickLogo.count
+    ? `can't show the school logo${sch ? ` for “${sch}”` : ""}: no logo with that school's name in Crystal Studio › School logos (add it, named exactly like this)`
+    : "can't show the school logo: no school logos in Crystal Studio yet (add them in School logos)";
 }
 
 // one crystal's picture: this order's own design if it has one, else the default.
@@ -421,7 +430,17 @@ async function draw() {
     if (my !== job) return; // moved on meanwhile
   }
   const flip = flipped && document.getElementById("flip").checked;
-  stage.innerHTML = `<img alt="" src="${pics.get(key)}" style="height:${Math.round(BASE_H * zoom)}px${flip ? ";transform:scaleX(-1)" : ""}">`;
+  // no school logo for it: a dashed box with a remark where the logo goes (only here, never printed)
+  let remark = "";
+  const box = sl.t && pickLogo.which && !pickLogo.which(sl.t.row) ? logoPlace(sl.it) : null;
+  if (box && sl.it.width && sl.it.height) {
+    const W = sl.it.width, H = sl.it.height, l = flip ? W - box.r : box.l;
+    const pct = (v, d) => Math.max(0, Math.min(100, (v / d) * 100)).toFixed(2) + "%";
+    const sch = schoolOf(sl.t.row);
+    remark = `<div class="nologo" style="left:${pct(l, W)};top:${pct(box.t, H)};width:${pct(box.r - box.l, W)};height:${pct(box.b - box.t, H)}" title="${esc(logoMissing(sl.t.row))}">` +
+      `<span>No school logo${sch ? ` for ${esc(sch)}` : ""}</span></div>`;
+  }
+  stage.innerHTML = `<div class="pic"><img alt="" src="${pics.get(key)}" style="height:${Math.round(BASE_H * zoom)}px${flip ? ";transform:scaleX(-1)" : ""}">${remark}</div>`;
   stage.classList.toggle("zoomed", zoom > 1);
   sendHeight();
 }
