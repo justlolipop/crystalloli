@@ -16,7 +16,7 @@ import { store, fileUrl } from "./store.js";
 import { illustratorWindow, START_LINK } from "./to-illustrator.js";
 import { vectorJob } from "./vector-job.js";
 import { EDIT_PASSWORD_SHA256 } from "./config.js";
-import { templateFor, sources as jenisSources, contentKey, orderDesignId } from "./jenis.js";
+import { templateFor, sources as jenisSources, contentKey, orderDesignId, excelStamp } from "./jenis.js";
 
 const PRINT_DPI = 300;
 // same columns as the master order Excel (event_header, year, position, event_line_1, …)
@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-16k";
+const VERSION = "2026-10-16l";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1450,7 +1450,7 @@ window.addEventListener("beforeunload", (e) => { if (S.dirty) { e.preventDefault
     S.sourceName = opened.name || "Order";
     S.order = opened.order != null && opened.order !== "" ? String(opened.order) : null;
     S.logoFrom = { logo: opened.logo, school: opened.school };
-    S.excel = typeof opened.excel === "string" ? opened.excel.slice(0, 2000) : "";
+    S.excel = excelStamp(opened.excel);
     S.noOwn = opened.own === false;
     // a teacher (from their order page): changes this order's crystals only — no Illustrator, no Admin
     if (opened.role === "teacher") {
