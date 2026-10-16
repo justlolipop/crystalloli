@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-15f";
+const VERSION = "2026-10-16a";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1203,12 +1203,16 @@ async function importLogoFiles(all) {
     logoEdit.list = logoEdit.list.filter((x) => !fresh.includes(x));
     const { dropped, junk } = await tidyLogos(fresh);
     renderLogos();
+    // the new ones without a name: their school's name read from the picture, to check
+    let read = 0;
+    if (fresh.some((x) => !x.name)) { try { read = await readNames(fresh); } catch (e) {} renderLogos(); }
     const unnamed = fresh.filter((x) => !x.name).length;
     logoStatus(`${logoStop ? `Stopped after ${done} of ${files.length} files. ` : ""}Found ${fresh.length} new logo${fresh.length === 1 ? "" : "s"} in ${done} file${done === 1 ? "" : "s"}.` +
       (dropped ? ` ${dropped} repeated logo${dropped === 1 ? " was" : "s were"} left out (the biggest copy kept).` : "") +
       (junk ? ` ${junk} shape${junk === 1 ? "" : "s"} that aren't logos (lines, crop marks) left out.` : "") +
       (skipped ? ` ${skipped} .ai file${skipped === 1 ? " wasn't a logo sheet" : "s weren't logo sheets"} (the same logo many times), so skipped.` : "") +
-      (unnamed ? ` ${unnamed} had no name: type the school's name under each.` : "") + " Check them, then Save." +
+      (read ? ` ${read} name${read === 1 ? " was" : "s were"} read from the logos (outlined in yellow).` : "") +
+      (unnamed ? ` ${unnamed} still without a name (kept: type it in when you know it).` : "") + " Check them, then Save." +
       (bad.length ? `  ·  ${bad.join("  ·  ")}` : ""), bad.length && !fresh.length);
   } finally { setBusy(false); logoBar(0, 0); }
 }
@@ -1256,17 +1260,17 @@ async function ocrPicture(src) {
   x.putImageData(d, 0, 0);
   return c;
 }
-$("logosRead").onclick = async () => {
-  const todo = logoEdit.list.filter((x) => !String(x.name || "").trim());
-  if (!todo.length) return logoStatus("Every logo has a name already.");
-  $("logosRead").disabled = true;
+// the school's name read from each of these logos (only those still without one) -> how many found
+async function readNames(todo) {
+  todo = todo.filter((x) => !String(x.name || "").trim());
+  if (!todo.length) return 0;
   let worker = null, found = 0;
   try {
     logoStatus("Getting the word reader ready (the first time takes a little while)…");
     const T = await loadOcr();
     worker = await T.createWorker("eng", 1, window.CRYSTAL_OCR || {});
     for (const [i, x] of todo.entries()) {
-      logoStatus(`Reading the school names… ${i + 1} of ${todo.length}${found ? `, ${found} found` : ""}`);
+      logoStatus(`Reading the school names from the logos… ${i + 1} of ${todo.length}${found ? `, ${found} found` : ""}`);
       logoBar(i, todo.length);
       try {
         const pic = await ocrPicture(x.data || fileUrl(x.file));
@@ -1278,19 +1282,27 @@ $("logosRead").onclick = async () => {
           await worker.setParameters({ tessedit_pageseg_mode: "3" });
         }
         pic.width = pic.height = 0;
-        if (name && !String(x.name || "").trim()) { x.name = name; x.guessed = true; found++; }
+        if (name && !String(x.name || "").trim()) { x.name = name; x.guessed = true; found++; renderLogos(); }
       } catch (e) {}
     }
-    renderLogos();
-    logoStatus(found ? `${found} of ${todo.length} name${found === 1 ? "" : "s"} read from the logos (outlined in yellow): check each one, fix it if needed, then Save.`
-      : "No school names could be read from these logos: type them in.");
-  } catch (e) {
-    logoStatus("Couldn't read the names: " + e.message, true);
   } finally {
     if (worker) { try { await worker.terminate(); } catch (e) {} }
-    $("logosRead").disabled = false;
     logoBar(0, 0);
   }
+  return found;
+}
+$("logosRead").onclick = async () => {
+  const todo = logoEdit.list.filter((x) => !String(x.name || "").trim());
+  if (!todo.length) return logoStatus("Every logo has a name already.");
+  $("logosRead").disabled = true;
+  try {
+    const found = await readNames(todo);
+    renderLogos();
+    logoStatus(found ? `${found} of ${todo.length} name${found === 1 ? "" : "s"} read from the logos (outlined in yellow): check each one, fix it if needed, then Save.`
+      : "No school names could be read from these logos: type them in (or keep them without a name).");
+  } catch (e) {
+    logoStatus("Couldn't read the names: " + e.message, true);
+  } finally { $("logosRead").disabled = false; }
 };
 
 // sheets already in the list (the same logo many times, saved as one picture): each becomes one logo
@@ -1335,14 +1347,13 @@ for (const id of ["logosFile", "logosFolder"]) {
 }
 $("logosClose").onclick = () => $("logosDlg").close();
 $("logosSave").onclick = async () => {
-  const unnamed = logoEdit.list.filter((x) => !x.name.trim());
-  if (unnamed.length && !await ask(`${unnamed.length} logo${unnamed.length === 1 ? " has" : "s have"} no school name and won't be kept. Save the others?`)) return;
-  // one logo per school: the one higher in the list (just imported) wins
+  // one logo per school: the one higher in the list (just imported) wins; a logo without a name is
+  // kept too (no order finds it by its school until it has one)
   const seen = new Set(), list = [], add = [], drop = [...logoEdit.drop];
   for (const x of logoEdit.list) {
     const k = schoolKey(x.name);
-    if (!k || seen.has(k)) { if (x.file) drop.push(x.file); continue; }
-    seen.add(k);
+    if (k && seen.has(k)) { if (x.file) drop.push(x.file); continue; }
+    if (k) seen.add(k);
     const file = x.file || `logos/${x.id}.png`;
     if (x.data) add.push({ file, data: x.data });
     list.push({ id: x.id, name: x.name.trim(), file });
