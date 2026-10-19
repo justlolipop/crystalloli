@@ -152,13 +152,15 @@ export function guessLayout(item) {
 
 // how much bigger than its saved size a short text may get: not at all
 const GROW = 1; // never bigger than saved (asked for: no auto zoom); long words still shrink
+// …except a text with fewer lines than saved: it may fill the room its missing lines leave, this much
+const FEWER_GROW = 1.3;
 
 // the 3 master texts for one Excel row on this design. Each shrinks to fit: as wide as the design
 // allows, and no taller than the room down to the next text (the last one: to near the bottom).
 async function masterTexts(item, row) {
   const guess = guessLayout(item), saved = item.layout || {};
   const tops = MASTER_FIELDS.map((f) => (saved[f] ? saved[f].top : guess[f].top));
-  const texts = [];
+  const texts = [], stack = [];
   for (const [i, f] of MASTER_FIELDS.entries()) {
     let text = fieldValue(row, f);
     if (!text.trim()) continue;
@@ -191,15 +193,18 @@ async function masterTexts(item, row) {
     const sw = savedWidth > 0 ? savedWidth : s && s.w > 0 ? s.w : 0;
     const sizeOf = (t) => {
       const lines = t.split("\n").length;
+      // fewer lines than saved (TOKOH MURID where PENGAWAS / PUSAT SUMBER / SEKOLAH was): the room
+      // those lines took is free, so it may grow a little to fill the saved width (FEWER_GROW at most)
+      const up = sw && lines < (s.lines || 1) ? base * FEWER_GROW : grow;
       // more lines than saved (a long text on two lines, the name with event_line_2): each as big as
       // the room down to the next text allows, never bigger than saved
-      const tall = Math.min(grow, room > 0 ? room / (lines * lh) : grow);
+      const tall = Math.min(up, room > 0 ? (room + (up > grow ? (s.lines - lines) * base * lh : 0)) / (lines * lh) : up);
       const fit = (from, w) => fitSize(t, css, from, look.charSpacing || 0, look.scaleX || 1, w, 4);
       let size;
       if (!sw) size = fit(grow, maxW);
       else {
         const atBase = fit(base, maxW);
-        size = atBase < base ? atBase : Math.max(base, fit(grow, Math.min(maxW, sw + 0.5)));
+        size = atBase < base ? atBase : Math.max(base, fit(up, Math.min(maxW, sw + 0.5)));
       }
       // never smaller than saved for lack of room: the saved place was chosen by hand
       return Math.max(4, Math.min(size, sw && lines <= (s.lines || 1) ? Math.max(tall, base) : tall));
@@ -225,6 +230,8 @@ async function masterTexts(item, row) {
     const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
     if (extra > 0) top -= (extra * size * (look.lineHeight || 1) * 1.13) / 2;
     const real = css.startsWith("ps_");
+    // for laying the texts out together (restack): where and how tall it was on the template, how tall now
+    stack.push({ i: texts.length, tplTop: s ? s.top : g.top, tplH: (s ? s.lines || 1 : 1) * base * lh, h: text.split("\n").length * size * lh });
     texts.push({
       ...look, text, css, field: f, src: "m:" + f, tplText: null, top, fontSize: size, maxW,
       left: s ? s.left : g.cx, originX: s ? s.originX : "center", textAlign: s ? s.textAlign : "center",
@@ -232,10 +239,31 @@ async function masterTexts(item, row) {
       fontWeight: !real && look.bold ? "bold" : "normal", fontStyle: !real && look.italic ? "italic" : "normal",
     });
   }
+  restack(texts, stack, item.height);
   return texts;
 }
 
-// ------------------------------------------------------------------ scene for one Excel row
+// The texts laid out together: when this row's words take more or fewer lines than the template's
+// (TOKOH MURID on one line where PENGAWAS / PUSAT SUMBER / SEKOLAH took three), the gaps between the
+// texts stay as on the template and the whole group stays centred where the template's was — no big
+// hole under a short text, no long one running into the next. Rows the same height as the template
+// keep their saved places exactly.
+function restack(texts, stack, H) {
+  if (stack.length < 2) return;
+  stack.sort((a, b) => a.tplTop - b.tplTop);
+  if (stack.every((x) => Math.abs(x.h - x.tplH) < H * 0.01)) return;
+  const gaps = stack.slice(1).map((x, k) => Math.max(0, x.tplTop - (stack[k].tplTop + stack[k].tplH)));
+  const last = stack[stack.length - 1];
+  const centre = (stack[0].tplTop + last.tplTop + last.tplH) / 2;
+  const total = stack.reduce((n, x) => n + x.h, 0) + gaps.reduce((n, g) => n + g, 0);
+  // centred, but kept on the crystal (a little in from its top and bottom)
+  // (and not up into what's above the first text, the school's logo: a taller group goes down instead)
+  let y = Math.max(H * 0.03, stack[0].tplTop - H * 0.03, Math.min(centre - total / 2, H * 0.95 - total));
+  stack.forEach((x, k) => {
+    texts[x.i].top = y;
+    y += x.h + (gaps[k] || 0);
+  });
+}
 
 export async function libraryScene(item, row, columns) {
   // SVG Data handling (Inkscape converted artwork)
