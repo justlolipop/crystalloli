@@ -21,22 +21,43 @@ export function schoolKey(name) {
 }
 const WORDS = { TMN: "TAMAN", SRI: "SERI", KG: "KAMPUNG", KPG: "KAMPUNG", BDR: "BANDAR", JLN: "JALAN", BKT: "BUKIT", SG: "SUNGAI", SGI: "SUNGAI", PDG: "PADANG", LDG: "LADANG", BT: "BATU" };
 
-// the kept logo for a school, or null: the same name, else nearly (most of the words the same)
-export function logoFor(school, list) {
+// the kept logo for a school, or null: the same name, else a similar one — at least 3 words the
+// same, and every word of the shorter name that says which school it is (not SK, SEKOLAH …) in the
+// longer one: a logo named with more words after it ("SK GOMBAK UTARA SELANGOR 2024" for
+// "SK GOMBAK UTARA") is found, another school with some of the same words ("SK TAMAN SERI GOMBAK"
+// for "SK TAMAN SERI PAGI", "SMK GOMBAK UTARA" for "SK GOMBAK UTARA") isn't.
+// school: only logos named like a school (a school word in it) when not the same name
+export function logoFor(school, list, { school: needSchool = false } = {}) {
   const key = schoolKey(school);
   if (!key || !Array.isArray(list) || !list.length) return null;
   const exact = list.find((x) => schoolKey(x.name) === key);
   if (exact) return exact;
-  const words = new Set(key.split(" "));
+  const mine = key.split(" ");
   let best = null;
   for (const x of list) {
-    const other = new Set(schoolKey(x.name).split(" ").filter(Boolean));
-    if (!other.size) continue;
-    const same = [...other].filter((w) => words.has(w)).length;
-    const score = same / Math.max(words.size, other.size);
-    if (score >= 0.75 && (!best || score > best.score)) best = { x, score };
+    const theirs = schoolKey(x.name).split(" ").filter(Boolean);
+    if (!theirs.length || (needSchool && !theirs.some(isSchoolWord))) continue;
+    const near = similarSchool(mine, theirs);
+    if (near && (!best || near.same > best.same || (near.same === best.same && near.extra < best.extra))) best = { x, ...near };
   }
   return best ? best.x : null;
+}
+// what says only the kind of school, not which one
+const KIND = new Set(["SK", "SJK", "SJKC", "SJKT", "SMK", "SMJK", "SMKA", "SM", "SR", "SRA", "SBP", "MRSM", "SMA", "SABK", "SAM", "KV",
+  "SEKOLAH", "KEBANGSAAN", "MENENGAH", "RENDAH", "JENIS", "AGAMA", "CINA", "TAMIL", "SEK", "KEB"]);
+const isSchoolWord = (w) => KIND.has(w) || SCHOOL_WORD.test(w) || /^(MSSD|MSS|MSSN)$/.test(w);
+// two schools' names (as words) -> { same, extra } when they're the same school, else null
+function similarSchool(a, b) {
+  const A = new Set(a), B = new Set(b);
+  const same = [...A].filter((w) => B.has(w)).length;
+  if (same < 3) return null;
+  // a different kind of school (SK / SMK …) isn't the same school
+  const ka = a.filter((w) => KIND.has(w) && w.length <= 5), kb = b.filter((w) => KIND.has(w) && w.length <= 5);
+  if (ka.length && kb.length && !ka.some((w) => kb.includes(w))) return null;
+  const [short, long] = A.size <= B.size ? [A, B] : [B, A];
+  const core = [...short].filter((w) => !KIND.has(w));
+  if (!core.length || !core.every((w) => long.has(w))) return null;
+  return { same, extra: long.size - same };
 }
 
 // a picture (a web address or a data URL) as a data URL, so it can go into downloads and
@@ -87,10 +108,8 @@ export function logoPicker({ logo, school }, list) {
   const bySchool = logoFor(school, list);
   // no school with the order: the logo named exactly like the crystal's header's first line (what
   // the preview's "Add the school's logo" names it then)
-  const byHeader = (r) => {
-    const k = schoolKey(String(r.event_header || "").split("\n")[0]);
-    return k && Array.isArray(list) ? list.find((x) => schoolKey(x.name) === k) || null : null;
-  };
+  // (or a similar name, for a logo named like a school: see logoFor)
+  const byHeader = (r) => logoFor(String(r.event_header || "").split("\n")[0], list, { school: true });
   const inWords = (r) => byHeader(r) || logoInText(r.event_header || "", list) ||
     logoInText(Object.values(r).filter((v) => typeof v === "string").join(" \n "), list);
   const pick = async (row) => {
