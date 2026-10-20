@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-20b";
+const VERSION = "2026-10-20c";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1214,12 +1214,10 @@ async function importLogoFiles(all) {
       renderLogos();
       done++;
     }
-    // the same logo twice (also one kept already): once, the biggest copy; and no crop marks
+    // not looked through for repeats (asked for: old ones are found with the search and deleted by
+    // hand; Remove repeats does it on request)
     logoBar(files.length, files.length);
-    logoStatus(`Looking for repeated logos among the ${fresh.length} new one${fresh.length === 1 ? "" : "s"}…`);
-    logoEdit.list = logoEdit.list.filter((x) => !fresh.includes(x));
-    const { dropped, junk } = await tidyLogos(fresh, { progress: (n, all) => { logoStatus(`Looking for repeated logos… ${n} of ${all}`); logoBar(n, all); } });
-    renderLogos();
+    const dropped = 0, junk = 0;
     // the new ones without a name: their school's name read from the picture, to check
     let read = 0;
     if (fresh.some((x) => !x.name)) { try { read = await readNames(fresh); } catch (e) {} renderLogos(); }
