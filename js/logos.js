@@ -133,10 +133,14 @@ export function logoPicker({ logo, school }, list) {
 // different names only when nearly the same picture pixel for pixel (crests can look alike that small).
 // Shapes that aren't logos (crop marks, thin lines and frames: almost no ink in their box) are left out.
 // list: [{ data | src, name, ...anything }] -> the same, without the doubles; how many went; how many weren't logos
-export async function withoutDoubles(list) {
+// progress(n, total) as it goes; stop(): true to stop looking (the rest are kept as they are)
+export async function withoutDoubles(list, { progress, stop } = {}) {
   // one picture at a time: hundreds decoded at once would run out of memory
   const prints = [];
-  for (const x of list) prints.push(await fingerprint(x.data || x.src).catch(() => null));
+  for (const [i, x] of list.entries()) {
+    prints.push(stop && stop() ? null : await printOf(x.data || x.src).catch(() => null));
+    if (progress && (i % 10 === 9 || i === list.length - 1)) progress(i + 1, list.length);
+  }
   const keep = [];
   let junk = 0;
   list.forEach((x, i) => {
@@ -157,6 +161,13 @@ export async function withoutDoubles(list) {
 }
 // a name to compare logos by: the school's, without "LOGO", "COPY", "FINAL" …
 const nameKey = (name) => schoolKey(name).split(" ").filter((w) => w && !/^(LOGO|LOGOS|COPY|FINAL|NEW|PNG|JPG|AI)$/.test(w)).join(" ");
+// a kept logo's fingerprint, worked out once (its picture fetched once) while this page is open
+const prints = new Map();
+const printOf = (src) => {
+  if (typeof src !== "string" || src.startsWith("data:")) return fingerprint(src);
+  if (!prints.has(src)) prints.set(src, fingerprint(src).catch((e) => { prints.delete(src); throw e; }));
+  return prints.get(src);
+};
 async function fingerprint(src) {
   const img = await new Promise((res, rej) => { const i = new Image(); i.crossOrigin = "anonymous"; i.onload = () => res(i); i.onerror = rej; i.src = src; });
   const c = document.createElement("canvas");
