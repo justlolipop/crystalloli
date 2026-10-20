@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-20a";
+const VERSION = "2026-10-20b";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -1216,9 +1216,9 @@ async function importLogoFiles(all) {
     }
     // the same logo twice (also one kept already): once, the biggest copy; and no crop marks
     logoBar(files.length, files.length);
-    logoStatus(`Looking for repeated logos among ${logoEdit.list.length}…`);
+    logoStatus(`Looking for repeated logos among the ${fresh.length} new one${fresh.length === 1 ? "" : "s"}…`);
     logoEdit.list = logoEdit.list.filter((x) => !fresh.includes(x));
-    const { dropped, junk } = await tidyLogos(fresh);
+    const { dropped, junk } = await tidyLogos(fresh, { progress: (n, all) => { logoStatus(`Looking for repeated logos… ${n} of ${all}`); logoBar(n, all); } });
     renderLogos();
     // the new ones without a name: their school's name read from the picture, to check
     let read = 0;
@@ -1235,12 +1235,17 @@ async function importLogoFiles(all) {
 }
 // the logos being changed plus new ones: repeats (also under another name) once, the biggest copy,
 // and shapes that aren't logos out; new ones first, to check them. -> { dropped, junk }
-async function tidyLogos(fresh = []) {
-  const all = [...fresh, ...logoEdit.list].map((x) => ({ ...x, src: x.data ? undefined : fileUrl(x.file) }));
-  const { list, dropped, junk } = await withoutDoubles(all);
-  for (const x of logoEdit.list) if (x.file && !list.some((k) => k.file === x.file)) logoEdit.drop.push(x.file);
+// New ones (fresh): checked among themselves and against the kept logos of the same school only —
+// not all of them (a thousand pictures fetched one by one took many minutes); Remove repeats checks all.
+async function tidyLogos(fresh = [], opts = {}) {
+  const keys = new Set(fresh.map((x) => schoolKey(x.name)).filter(Boolean));
+  const near = fresh.length ? logoEdit.list.filter((x) => keys.has(schoolKey(x.name))) : logoEdit.list;
+  const rest = fresh.length ? logoEdit.list.filter((x) => !near.includes(x)) : [];
+  const all = [...fresh, ...near].map((x) => ({ ...x, src: x.data ? undefined : fileUrl(x.file) }));
+  const { list, dropped, junk } = await withoutDoubles(all, opts);
+  for (const x of near) if (x.file && !list.some((k) => k.file === x.file)) logoEdit.drop.push(x.file);
   const back = list.map(({ src, gone: g, junk: j, ...x }) => x);
-  logoEdit.list = back;
+  logoEdit.list = [...back, ...rest];
   // the new ones as they are in the list (same objects), for the caller to count
   fresh.splice(0, fresh.length, ...back.filter((x) => x.data && !x.file));
   return { dropped, junk };
@@ -1350,7 +1355,11 @@ $("logosSplit").onclick = async () => {
 };
 $("logosTidy").onclick = async () => {
   logoStatus(`Looking for repeated logos among ${logoEdit.list.length}…`);
-  const { dropped, junk } = await tidyLogos();
+  $("logosTidy").disabled = true;
+  let r;
+  try { r = await tidyLogos([], { progress: (n, all) => { logoStatus(`Looking for repeated logos… ${n} of ${all}`); logoBar(n, all); } }); }
+  finally { $("logosTidy").disabled = false; logoBar(0, 0); }
+  const { dropped, junk } = r;
   renderLogos();
   logoStatus(dropped || junk ? `${dropped} repeat${dropped === 1 ? "" : "s"} and ${junk} shape${junk === 1 ? "" : "s"} that aren't logos removed (the biggest copy kept). Check, then Save.` : "No repeated logos found.");
 };
