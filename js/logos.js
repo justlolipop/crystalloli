@@ -27,21 +27,23 @@ const WORDS = { TMN: "TAMAN", SRI: "SERI", KG: "KAMPUNG", KPG: "KAMPUNG", BDR: "
 // "SK GOMBAK UTARA") is found, another school with some of the same words ("SK TAMAN SERI GOMBAK"
 // for "SK TAMAN SERI PAGI", "SMK GOMBAK UTARA" for "SK GOMBAK UTARA") isn't.
 // school: only logos named like a school (a school word in it) when not the same name
+// Several fit (an old logo and a new one added for the same school, named a little differently):
+// the newest one, so a school's logo can be changed just by adding its new one.
 export function logoFor(school, list, { school: needSchool = false } = {}) {
   const key = schoolKey(school);
   if (!key || !Array.isArray(list) || !list.length) return null;
-  const exact = list.find((x) => schoolKey(x.name) === key);
-  if (exact) return exact;
   const mine = key.split(" ");
   let best = null;
   for (const x of list) {
-    const theirs = schoolKey(x.name).split(" ").filter(Boolean);
-    if (!theirs.length || (needSchool && !theirs.some(isSchoolWord))) continue;
-    const near = similarSchool(mine, theirs);
-    if (near && (!best || near.same > best.same || (near.same === best.same && near.extra < best.extra))) best = { x, ...near };
+    const k = schoolKey(x.name), theirs = k.split(" ").filter(Boolean);
+    if (!theirs.length) continue;
+    if (k !== key && (needSchool && !theirs.some(isSchoolWord) || !similarSchool(mine, theirs))) continue;
+    if (!best || addedAt(x) > addedAt(best)) best = x;
   }
-  return best ? best.x : null;
+  return best;
 }
+// when a logo was added (its id starts with the time: see libitem.js newId), 0 when unknown
+const addedAt = (x) => { const t = parseInt(String((x && x.id) || "").split("-")[0], 36); return t > 1e12 && t < 1e13 ? t : 0; };
 // what says only the kind of school, not which one
 const KIND = new Set(["SK", "SJK", "SJKC", "SJKT", "SMK", "SMJK", "SMKA", "SM", "SR", "SRA", "SBP", "MRSM", "SMA", "SABK", "SAM", "KV",
   "SEKOLAH", "KEBANGSAAN", "MENENGAH", "RENDAH", "JENIS", "AGAMA", "CINA", "TAMIL", "SEK", "KEB"]);
