@@ -140,7 +140,7 @@ const schoolOf = (row) => String(logoFrom.school || "").trim() || String((row &&
 function logoMissing(row) {
   const sch = schoolOf(row);
   return pickLogo.count
-    ? `can't show the school logo${sch ? ` for “${sch}”` : ""}: no logo with that school's name in Crystal Studio › School logos (add it, named exactly like this)`
+    ? `can't show the school logo${sch ? ` for “${sch}”` : ""}: no logo with that school's name in Crystal Studio › School logos (add it with this name, or one with the same words and more after them)`
     : "can't show the school logo: no school logos in Crystal Studio yet (add them in School logos)";
 }
 
