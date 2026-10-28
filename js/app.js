@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-28a";
+const VERSION = "2026-10-28b";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -703,9 +703,11 @@ $("eraseBtn").onclick = () => {
 $("restoreBg").onclick = async () => {
   const it = itemOf(S.key);
   if (!it || !it.original) return toast("Pick a crystal design (.ai) first.", "bad");
-  if (!(it.hide || []).length) return toast("Nothing has been taken out of this design.");
+  // (the designs next to it reaching into its box stay out: they're not this design's — see library.js othersIn)
+  const others = it.others || [];
+  if ((it.hide || []).length <= others.length) return toast("Nothing has been taken out of this design.");
   if (!await ask(`Put back everything taken out of “${it.name}” (the logo too)?`)) return;
-  await saveBackground(it, [], "Everything is back. Use Remove from background to take things out again.");
+  await saveBackground(it, others, "Everything is back. Use Remove from background to take things out again.");
 };
 
 // ------------------------------------------------------------------ Excel
