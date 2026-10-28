@@ -489,10 +489,15 @@ async function drawBare(page, textItems, c, vp, hide = []) {
       return w > 0 && h > 0 && w * h >= 0.6 * a;
     });
   };
-  const ghosts = plan.items.filter(inText);
+  // a background pattern's pieces inside a text's box aren't its outline copies: the same shape (size
+  // and colour) is drawn outside the texts too — those stay (else each text's box is a hole in it)
+  const sig = (it) => `${it.color}|${it.path ? 1 : 0}|${Math.round((it.x1 - it.x0) * 10)}|${Math.round((it.y1 - it.y0) * 10)}`;
+  const outside = new Set(plan.items.filter((it) => !inText(it)).map(sig));
+  const ghostly = (it) => inText(it) && !outside.has(sig(it));
+  const ghosts = plan.items.filter(ghostly);
   if (!ghosts.length && !hide.length) return asIs;
   const hidden = new Set(hide);
-  const keep = plan.items.filter((it) => !inText(it) && !hidden.has(it.op)).map((it) => it.op);
+  const keep = plan.items.filter((it) => !ghostly(it) && !hidden.has(it.op)).map((it) => it.op);
   const without = (fn) => serial(() => drawOnly(plan, keep, fn));
   await without(draw);
   return { without, ghosts };
@@ -1098,7 +1103,8 @@ export async function piecesIn(item, box) {
 // 5: also a pattern of several shapes repeated (a flower of petals): what was taken out as words comes back
 // 6: the white glow behind the old words goes with them (it was left as a white blank)
 // 7: also one glow picture behind all the old words together
-export const CLEAN_VERSION = 7;
+// 8: drawn again — a pattern's pieces inside a live text's box were left out as its outline (holes)
+export const CLEAN_VERSION = 8;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
@@ -1119,7 +1125,7 @@ export async function autoClean(item) {
     }
     // cleaned before 6: the white glows behind its old words go too
     if (item.cleaned < 7 && found.glow && found.glow.length) hide = [...new Set([...hide, ...found.glow])];
-    if (hide.length !== (item.hide || []).length || hide.some((o, k) => o !== item.hide[k])) {
+    if (item.cleaned < 8 || hide.length !== (item.hide || []).length || hide.some((o, k) => o !== item.hide[k])) {
       out.hide = hide;
       out.background = await redrawBackground(item, hide);
     }
