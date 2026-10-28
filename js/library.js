@@ -330,8 +330,8 @@ class CanvasFactory {
 // and corners sit at the sides, the background behind it is far bigger. Small pieces right under
 // it (the school's name) go with it.
 // r: the design's box on the page (pt) -> { hide: [step], outlined: [{ l, t, r, b }] (pt, design) }
-function logoAndWords(plan, r) {
-  const els = findElements(plan.items, { x: r.x, y: r.y, w: r.w, h: r.h });
+function logoAndWords(plan, r, opts) {
+  const els = findElements(plan.items, { x: r.x, y: r.y, w: r.w, h: r.h }, opts);
   const cx = (e) => (e.x0 + e.x1) / 2 - r.x, cy = (e) => (e.y0 + e.y1) / 2 - r.y;
   const w = (e) => e.x1 - e.x0, h = (e) => e.y1 - e.y0;
   const pieces = els.filter((e) => e.kind === "graphic" || e.kind === "art" || e.kind === "text");
@@ -952,7 +952,8 @@ export async function piecesIn(item, box) {
 // removed by hand stays removed; "Put back" afterwards isn't undone (cleaned marks it as done).
 // -> the changes to save ({ id, cleaned, hide, outlined, background? }), or null when already done
 // 2: also where the logo was (logoBox) · 3: the colour of its old words drawn as shapes
-export const CLEAN_VERSION = 3;
+// 4: a row of a repeating background pattern isn't words (what 3 took out as words comes back)
+export const CLEAN_VERSION = 4;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
@@ -961,8 +962,18 @@ export async function autoClean(item) {
   const found = plan ? logoAndWords(plan, { x, y, w, h }) : { hide: [], outlined: [] };
   // cleaned before: only where its logo was is new (what's left out stays as it is — a logo put
   // back by hand stays back)
-  if (item.cleaned) return { id: item.id, cleaned: CLEAN_VERSION, logoBox: item.logoBox || found.logoBox || null,
-    outlined: found.outlined.length ? found.outlined : item.outlined || [] };
+  if (item.cleaned) {
+    const out = { id: item.id, cleaned: CLEAN_VERSION, logoBox: item.logoBox || found.logoBox || null,
+      outlined: found.outlined.length ? found.outlined : item.outlined || [] };
+    // cleaned before 4: the pattern taken out as if it were words comes back (what was taken out by
+    // hand, or is still found, stays out)
+    if (item.cleaned < 4 && plan && (item.hide || []).length) {
+      const before = new Set(logoAndWords(plan, { x, y, w, h }, { tiles: false }).hide), now = new Set(found.hide);
+      const hide = item.hide.filter((o) => !before.has(o) || now.has(o));
+      if (hide.length !== item.hide.length) { out.hide = hide; out.background = await redrawBackground(item, hide); }
+    }
+    return out;
+  }
   const had = item.hide || [], hide = [...new Set([...had, ...found.hide])];
   const out = { id: item.id, cleaned: CLEAN_VERSION, hide, outlined: found.outlined.length ? found.outlined : item.outlined || [], logoBox: found.logoBox || null };
   if (hide.length !== had.length) out.background = await redrawBackground(item, hide);
