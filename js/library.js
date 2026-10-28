@@ -554,6 +554,9 @@ async function importPdf(file, progress) {
     const plan = pagePlan(page);
     const cleared = parts.map((r) => (plan ? logoAndWords(plan, r) : { hide: [], outlined: [] }));
     const hideAll = cleared.flatMap((c) => c.hide);
+    // designs whose boxes overlap: the neighbours' artwork in each one's box (not left out of the page
+    // picture here: it's theirs — each is cut from it without the others, see cropOwn)
+    const others = parts.map((r, i) => (regions.length ? othersIn(plan, regions, i, S) : []));
     if (hideAll.length) await drawBare(page, tc.items, bare, vp, hideAll);
     const inside = (b, r) => b.cx >= r.x && b.cx <= r.x + r.w && b.cy >= r.y && b.cy <= r.y + r.h;
     const outside = regions.length ? blocks.filter((b) => !regions.some((r) => inside(b, r))) : [];
@@ -574,9 +577,10 @@ async function importPdf(file, progress) {
       out.push({
         name: regions.length ? `${base} — ${label || "Design " + (i + 1)}` : doc.numPages > 1 ? `${base} — artboard ${n}` : base,
         file: file.name, page: n, order: out.length, source: "pdf", width: r.w, height: r.h, region: [r.x, r.y, r.w, r.h], original,
-        background: regions.length ? crop(bare.canvas, r, S) : bare.canvas.toDataURL("image/png"),
+        background: regions.length ? (r.tight ? cropOwn(bare.canvas, regions, i, S) : crop(bare.canvas, r, S)) : bare.canvas.toDataURL("image/png"),
         texts: blocks.filter((b) => !regions.length || inside(b, r)).map((b) => finishText(b, r)),
-        hide: cleared[i].hide, outlined: cleared[i].outlined, logoBox: cleared[i].logoBox || null, cleaned: CLEAN_VERSION,
+        hide: [...cleared[i].hide, ...others[i]], others: others[i].length ? others[i] : undefined,
+        outlined: cleared[i].outlined, logoBox: cleared[i].logoBox || null, cleaned: CLEAN_VERSION,
       });
     });
     bare.canvas.width = bare.canvas.height = 0;
@@ -643,14 +647,19 @@ function designsIn(ink, g, gw, gh, S, pageW, pageH) {
     for (let y = gh - 1; y >= 0; y--) if (tmp[y * gw + x]) last = y; else if (last - y <= rad) grown[y * gw + x] = 1;
   }
   const seen = new Uint8Array(gw * gh);
+  // which drawing each cell belongs to (1, 2 …; 0: none), to tell designs apart where their boxes overlap
+  const lab = new Int32Array(gw * gh);
   const boxes = [];
+  let comps = 0;
   for (let i = 0; i < gw * gh; i++) {
     if (!grown[i] || seen[i]) continue;
     let x0 = gw, y0 = gh, x1 = -1, y1 = -1;
+    const id = ++comps;
     const stack = [i];
     seen[i] = 1;
     while (stack.length) {
       const j = stack.pop();
+      lab[j] = id;
       const x = j % gw, y = (j / gw) | 0;
       if (ink[j]) { if (x < x0) x0 = x; if (x > x1) x1 = x; if (y < y0) y0 = y; if (y > y1) y1 = y; }
       if (x > 0 && grown[j - 1] && !seen[j - 1]) { seen[j - 1] = 1; stack.push(j - 1); }
@@ -658,7 +667,7 @@ function designsIn(ink, g, gw, gh, S, pageW, pageH) {
       if (y > 0 && grown[j - gw] && !seen[j - gw]) { seen[j - gw] = 1; stack.push(j - gw); }
       if (y < gh - 1 && grown[j + gw] && !seen[j + gw]) { seen[j + gw] = 1; stack.push(j + gw); }
     }
-    if (x1 >= 0) boxes.push({ x: (x0 * g) / S, y: (y0 * g) / S, w: ((x1 - x0 + 1) * g) / S, h: ((y1 - y0 + 1) * g) / S });
+    if (x1 >= 0) boxes.push({ x: (x0 * g) / S, y: (y0 * g) / S, w: ((x1 - x0 + 1) * g) / S, h: ((y1 - y0 + 1) * g) / S, comps: [id] });
   }
   const area = pageW * pageH;
   const big = boxes.filter((b) => b.w * b.h >= area * 0.012 && b.w >= pageW * 0.05 && b.h >= pageH * 0.05);
@@ -676,14 +685,20 @@ function designsIn(ink, g, gw, gh, S, pageW, pageH) {
       const gap = Math.max(0, s.y - (b.y + b.h), b.y - (s.y + s.h));
       if (gap < b.h * 0.2 && gap < bestGap) { bestGap = gap; best = b; }
     }
-    if (best) union(best, s);
+    if (best) { union(best, s); best.comps.push(...s.comps); }
   }
   for (let merged = true; merged;) {
     merged = false;
     for (let i = 0; i < big.length && !merged; i++) {
       for (let j = i + 1; j < big.length; j++) {
         const a = big[i], b = big[j];
-        if (a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h) { union(a, b); big.splice(j, 1); merged = true; break; }
+        const ow = Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x), oh = Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+        if (ow <= 0 || oh <= 0) continue;
+        // boxes that overlap are one design — unless they're two designs of about the same size whose
+        // shapes (wavy, slanted) only reach a little into each other's box: those stay apart ("tight")
+        const sa = a.w * a.h, sb = b.w * b.h;
+        if (ow * oh < 0.3 * Math.min(sa, sb) && Math.min(sa, sb) > 0.25 * Math.max(sa, sb)) { a.tight = b.tight = true; continue; }
+        union(a, b); a.comps.push(...b.comps); a.tight = a.tight || b.tight; big.splice(j, 1); merged = true; break;
       }
     }
   }
@@ -699,7 +714,56 @@ function designsIn(ink, g, gw, gh, S, pageW, pageH) {
     const r = rows.find((r) => b.y + b.h / 2 > r.top && b.y + b.h / 2 < r.bottom);
     if (r) { r.items.push(b); r.bottom = Math.max(r.bottom, b.y + b.h); } else rows.push({ top: b.y, bottom: b.y + b.h, items: [b] });
   }
-  return rows.flatMap((r) => r.items.sort((a, b) => a.x - b.x));
+  const out = rows.flatMap((r) => r.items.sort((a, b) => a.x - b.x));
+  out.cells = { lab, g, gw, gh };
+  return out;
+}
+
+// For designs whose boxes overlap (see designsIn "tight"): which design a cell of the page (px)
+// belongs to, by its drawing -> the design's index, or -1
+function ownerAt(regions, px, py) {
+  const c = regions.cells;
+  if (!c) return -1;
+  const x = Math.floor(px / c.g), y = Math.floor(py / c.g);
+  if (x < 0 || y < 0 || x >= c.gw || y >= c.gh) return -1;
+  const id = c.lab[y * c.gw + x];
+  return id ? regions.findIndex((r) => r.comps && r.comps.includes(id)) : -1;
+}
+// a design's box cut from the page picture, without what belongs to the designs next to it
+// (their shapes reach into its box): see-through there
+function cropOwn(src, regions, i, S) {
+  const r = regions[i];
+  const c = document.createElement("canvas");
+  c.width = Math.max(1, Math.round(r.w * S));
+  c.height = Math.max(1, Math.round(r.h * S));
+  const x = c.getContext("2d");
+  x.drawImage(src, r.x * S, r.y * S, r.w * S, r.h * S, 0, 0, c.width, c.height);
+  const img = x.getImageData(0, 0, c.width, c.height), d = img.data;
+  for (let py = 0; py < c.height; py++) for (let px = 0; px < c.width; px++) {
+    const k = (py * c.width + px) * 4;
+    if (!d[k + 3]) continue;
+    const o = ownerAt(regions, r.x * S + px, r.y * S + py);
+    if (o >= 0 && o !== i) d[k + 3] = 0;
+  }
+  x.putImageData(img, 0, 0);
+  return c.toDataURL("image/png");
+}
+// the artwork of the designs next to this one that reaches into its box (drawing steps): left out
+// of it for good (in its hide list, so redrawn pictures and Illustrator leave it out too)
+function othersIn(plan, regions, i, S) {
+  const r = regions[i], ops = [];
+  if (!plan || !r.tight) return ops;
+  for (const it of plan.items) {
+    if (it.x1 <= r.x || it.x0 >= r.x + r.w || it.y1 <= r.y || it.y0 >= r.y + r.h) continue;
+    const pts = [[0.5, 0.5], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
+    let o = -1;
+    for (const [fx, fy] of pts) {
+      o = ownerAt(regions, (it.x0 + (it.x1 - it.x0) * fx) * S, (it.y0 + (it.y1 - it.y0) * fy) * S);
+      if (o >= 0) break;
+    }
+    if (o >= 0 && o !== i) ops.push(it.op);
+  }
+  return ops;
 }
 
 function toHex(r, g, b) {
