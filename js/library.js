@@ -1039,7 +1039,8 @@ export async function piecesIn(item, box) {
 // -> the changes to save ({ id, cleaned, hide, outlined, background? }), or null when already done
 // 2: also where the logo was (logoBox) · 3: the colour of its old words drawn as shapes
 // 4: a row of a repeating background pattern isn't words (what 3 took out as words comes back)
-export const CLEAN_VERSION = 4;
+// 5: also a pattern of several shapes repeated (a flower of petals): what was taken out as words comes back
+export const CLEAN_VERSION = 5;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
@@ -1051,9 +1052,9 @@ export async function autoClean(item) {
   if (item.cleaned) {
     const out = { id: item.id, cleaned: CLEAN_VERSION, logoBox: item.logoBox || found.logoBox || null,
       outlined: found.outlined.length ? found.outlined : item.outlined || [] };
-    // cleaned before 4: the pattern taken out as if it were words comes back (what was taken out by
+    // cleaned before 5: the pattern taken out as if it were words comes back (what was taken out by
     // hand, or is still found, stays out)
-    if (item.cleaned < 4 && plan && (item.hide || []).length) {
+    if (item.cleaned < 5 && plan && (item.hide || []).length) {
       const before = new Set(logoAndWords(plan, { x, y, w, h }, { tiles: false }).hide), now = new Set(found.hide);
       const hide = item.hide.filter((o) => !before.has(o) || now.has(o));
       if (hide.length !== item.hide.length) { out.hide = hide; out.background = await redrawBackground(item, hide); }

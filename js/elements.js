@@ -202,14 +202,26 @@ function unionFind(n) {
   return { find, join: (i, j) => { p[find(i)] = find(j); } };
 }
 
-// a row of the same shape again and again at the same distance (a background pattern: flowers,
-// diamonds), not letters — letters differ in width (I, M, O) and in how far apart they are
+// a row of a repeating background pattern, not letters: the same shapes again and again in the same
+// order (a flower of one shape, or of several — petals, a dot — repeated), at least 3 times.
+// Letters differ in width (I, M, O) and don't come back in a cycle like that.
 function repeating(items) {
-  if (items.length < 3) return false;
-  const ws = items.map((it) => it.x1 - it.x0), hs = items.map((it) => it.y1 - it.y0);
-  const near = (v) => Math.max(...v) <= Math.min(...v) * 1.12 + 0.01;
-  const steps = items.slice(1).map((it, k) => it.x0 - items[k].x0);
-  return near(ws) && near(hs) && steps.every((d) => d > 0) && near(steps);
+  const n = items.length;
+  if (n < 6) return false; // a pattern runs on (a short word's letters can be nearly alike)
+  const W = (it) => it.x1 - it.x0, H = (it) => it.y1 - it.y0;
+  for (let p = 1; p <= 8 && n >= 3 * p; p++) {
+    // one shape over and over: closer alike than letters of one width (N, U, H …) ever are
+    const tol = p === 1 ? 0.04 : 0.1;
+    const same = (a, b) => Math.abs(W(a) - W(b)) <= Math.max(W(a), W(b)) * tol + 0.05 && Math.abs(H(a) - H(b)) <= Math.max(H(a), H(b)) * tol + 0.05;
+    let ok = 0;
+    for (let k = 0; k + p < n; k++) if (same(items[k], items[k + p])) ok++;
+    if (ok < (n - p) * 0.9) continue;
+    // and the same distance from one repeat to the next
+    const steps = [];
+    for (let k = 0; k + p < n; k += p) steps.push(items[k + p].x0 - items[k].x0);
+    if (steps.every((d) => d > 0) && Math.max(...steps) <= Math.min(...steps) * 1.12 + 0.05) return true;
+  }
+  return false;
 }
 
 // Elements of the design inside region R ({ x, y, w, h } in pt, page top-left), bottom to top:
