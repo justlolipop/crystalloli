@@ -251,6 +251,21 @@ body:not(.teacher) #teacherHint{display:none}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
-<script type="module" src="js/app.js"></script>
+<script>
+// Crystal Studio's own scripts, fresh at least every 10 minutes: a browser (or the web host) keeping
+// old copies would otherwise mix old and new files, or run an old Crystal Studio after an update
+(function () {
+  var v = Math.floor(Date.now() / 600000), map = { imports: {} };
+  ["app", "config", "editor", "elements", "excel", "font-share", "fonts", "illustrator", "jenis", "libitem", "library", "logos", "measure", "pdf", "plak", "preview", "store", "to-illustrator", "util", "vector-job"].forEach(function (n) { map.imports["./js/" + n + ".js"] = "./js/" + n + ".js?v=" + v; });
+  var im = document.createElement("script");
+  im.type = "importmap";
+  im.textContent = JSON.stringify(map);
+  document.currentScript.after(im);
+  var m = document.createElement("script");
+  m.type = "module";
+  m.src = "js/app.js?v=" + v;
+  im.after(m);
+})();
+</script>
 </body>
 </html>
