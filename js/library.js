@@ -417,6 +417,23 @@ function logoAndWords(plan, r, opts) {
       taken.add(it.op);
     }
   }
+  // one soft glow picture behind all the old words together (not one per word): a picture with at
+  // least one old word on it, within the old words' box (and a margin), not the whole design
+  const all = [...words, ...live];
+  if (all.length) {
+    const pad = Math.max(...all.map((e) => h(e)));
+    const box = { x0: Math.min(...all.map((e) => e.x0)) - pad, y0: Math.min(...all.map((e) => e.y0)) - pad,
+      x1: Math.max(...all.map((e) => e.x1)) + pad, y1: Math.max(...all.map((e) => e.y1)) + pad };
+    for (const it of plan.items) {
+      if (taken.has(it.op) || it.path || it.stroke) continue;
+      if (it.x0 < box.x0 || it.x1 > box.x1 || it.y0 < box.y0 || it.y1 > box.y1) continue;
+      if ((it.x1 - it.x0) * (it.y1 - it.y0) > r.w * r.h * 0.7) continue;
+      const onIt = all.some((e) => e.x0 >= it.x0 - 1 && e.x1 <= it.x1 + 1 && e.y0 >= it.y0 - 1 && e.y1 <= it.y1 + 1);
+      if (!onIt) continue;
+      glow.push(it.op);
+      taken.add(it.op);
+    }
+  }
   // where the logo was (pt, design): the school's own logo goes there (see logoPlace)
   const marks = [logo, pic].filter(Boolean);
   const logoBox = marks.length ? {
@@ -1030,6 +1047,11 @@ export async function pieceAt(item, x, y) {
   const hidden = new Set(item.hide || []);
   const area = (e) => (e.x1 - e.x0) * (e.y1 - e.y0), A = rw * rh;
   const at = (e) => px >= e.x0 && px <= e.x1 && py >= e.y0 && py <= e.y1;
+  // a white glow or white box on top where it was clicked (a big one, behind all the old words): just
+  // that — what's under it (the pattern) stays
+  const white = (c) => { const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c || ""); return !!m && m.slice(1).every((v) => parseInt(v, 16) >= 0xe6); };
+  const top = plan.items.filter((it) => at(it) && !hidden.has(it.op) && !it.stroke && area(it) <= A * 0.85).sort((a, b) => b.op - a.op)[0];
+  if (top && area(top) > A * 0.1 && (!top.path || white(top.color))) return [top.op];
   // a piece the size of a logo, not the artwork spread over the whole design (traced flowers and
   // corners are often one piece covering it all)
   const hits = findElements(plan.items, { x: rx, y: ry, w: rw, h: rh })
@@ -1075,7 +1097,8 @@ export async function piecesIn(item, box) {
 // 4: a row of a repeating background pattern isn't words (what 3 took out as words comes back)
 // 5: also a pattern of several shapes repeated (a flower of petals): what was taken out as words comes back
 // 6: the white glow behind the old words goes with them (it was left as a white blank)
-export const CLEAN_VERSION = 6;
+// 7: also one glow picture behind all the old words together
+export const CLEAN_VERSION = 7;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
@@ -1095,7 +1118,7 @@ export async function autoClean(item) {
       hide = hide.filter((o) => !before.has(o) || now.has(o));
     }
     // cleaned before 6: the white glows behind its old words go too
-    if (item.cleaned < 6 && found.glow && found.glow.length) hide = [...new Set([...hide, ...found.glow])];
+    if (item.cleaned < 7 && found.glow && found.glow.length) hide = [...new Set([...hide, ...found.glow])];
     if (hide.length !== (item.hide || []).length || hide.some((o, k) => o !== item.hide[k])) {
       out.hide = hide;
       out.background = await redrawBackground(item, hide);
