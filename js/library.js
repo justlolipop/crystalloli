@@ -50,8 +50,22 @@ const filled = (v) => v != null && String(v).trim() !== "";
 // what a text linked to this column shows for this row
 export function fieldValue(row, field) {
   if (!row || !field) return "";
+  // the position: each word with a capital first ("PENGAWAS PUSAT SUMBER" -> "Pengawas Pusat Sumber"),
+  // on the crystal and in Illustrator; the Excel stays as it is
+  if (field === "position") return filled(row[field]) ? titleWords(String(row[field])) : "";
   if (field !== "event_line_1") return filled(row[field]) ? String(row[field]) : "";
   return ["event_line_1", ...MORE_LINES].filter((f) => filled(row[f])).map((f) => String(row[f])).join("\n");
+}
+
+// Each word with a capital first, the rest small — except short forms kept in capitals: a word with
+// no vowel (PRS, SPM), with a figure (5A, PT3, 2026), a Roman numeral (II, IV), in brackets ((ASPA))
+// or a usual school short form (UPSR, PPKI, PIBG …); parts joined by - or / each on their own
+const KEEP_CAPS = new Set(["UPSR", "PPKI", "PIBG", "UASA", "PAFA", "SEGAK", "MSSD", "MSSM", "MSSN", "SK", "SMK", "SJK", "SJKC", "SJKT",
+  "KAFA", "PASTI", "KRS", "PBD", "PAJSK", "STEM", "TVET", "JQAF", "NILAM", "LINUS", "PDPC", "ICT", "PERKESO", "UPKK", "PSV", "PJK"]);
+export function titleWords(text) {
+  const one = (p) => (!p || /\d/.test(p) || KEEP_CAPS.has(p.toUpperCase()) || /^[IVXLC]+$/.test(p) && p.length <= 4 ||
+    !/[AEIOUaeiou]/.test(p) ? p : p.charAt(0).toUpperCase() + p.slice(1).toLowerCase());
+  return String(text).replace(/[^\s]+/g, (w) => (/^\(.*\)?$/.test(w) ? w : w.split(/(-|\/)/).map(one).join("")));
 }
 
 // a text linked to this column was typed in: put its words back in the row's cells
