@@ -344,6 +344,17 @@ class CanvasFactory {
 // and corners sit at the sides, the background behind it is far bigger. Small pieces right under
 // it (the school's name) go with it.
 // r: the design's box on the page (pt) -> { hide: [step], outlined: [{ l, t, r, b }] (pt, design) }
+// the page's live words (not outlined), as boxes (pt, page top-left): their white glows go too
+async function liveWords(page) {
+  try {
+    const vp = page.getViewport({ scale: 1 }), tc = await page.getTextContent();
+    return tc.items.filter((t) => t.str && t.str.trim() && t.width > 0).map((t) => {
+      const m = pdfjsLib.Util.transform(vp.transform, t.transform), size = Math.hypot(m[2], m[3]) || t.height || 1;
+      return { x0: m[4], x1: m[4] + t.width, y0: m[5] - size, y1: m[5] + size * 0.2 };
+    });
+  } catch (e) { return []; }
+}
+
 function logoAndWords(plan, r, opts) {
   const els = findElements(plan.items, { x: r.x, y: r.y, w: r.w, h: r.h }, opts);
   const cx = (e) => (e.x0 + e.x1) / 2 - r.x, cy = (e) => (e.y0 + e.y1) / 2 - r.y;
@@ -385,6 +396,27 @@ function logoAndWords(plan, r, opts) {
     return (ink || all[0] || [null])[0];
   };
   for (const e of words) drop.add(e);
+  // the white glow behind each old word (a soft white shape or picture, so the words stand out from a
+  // pattern): taken out with its word — left alone it's a white blank where the word was
+  const glow = [];
+  const taken = new Set([...drop].flatMap((e) => e.ops));
+  const whiteish = (c) => { const m = /^#([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(c || ""); return !!m && m.slice(1).every((v) => parseInt(v, 16) >= 0xe6); };
+  const live = ((opts && opts.live) || []).filter((b) => b.x0 >= r.x - 1 && b.x1 <= r.x + r.w + 1 && b.y0 >= r.y - 1 && b.y1 <= r.y + r.h + 1);
+  for (const e of [...words, ...live]) {
+    const ew = w(e), eh = h(e), pad = Math.max(eh, ew * 0.15);
+    for (const it of plan.items) {
+      if (taken.has(it.op) || it.stroke || (it.path && !whiteish(it.color))) continue;
+      // around the word: covers (nearly) all of it, and not much more than a margin round it
+      const ow = Math.min(it.x1, e.x1) - Math.max(it.x0, e.x0), oh = Math.min(it.y1, e.y1) - Math.max(it.y0, e.y0);
+      if (ow <= 0 || oh <= 0 || ow * oh < 0.8 * ew * eh) continue;
+      // a soft glow (a picture) may reach a bit further; a white shape only as a close outline round the
+      // letters — a white box or panel with room round the words (a name's frame) is the design's own
+      const m = it.path ? eh * 0.35 : pad;
+      if (it.x0 < e.x0 - m || it.x1 > e.x1 + m || it.y0 < e.y0 - m || it.y1 > e.y1 + m) continue;
+      glow.push(it.op);
+      taken.add(it.op);
+    }
+  }
   // where the logo was (pt, design): the school's own logo goes there (see logoPlace)
   const marks = [logo, pic].filter(Boolean);
   const logoBox = marks.length ? {
@@ -392,7 +424,8 @@ function logoAndWords(plan, r, opts) {
     r: Math.max(...marks.map((e) => e.x1)) - r.x, b: Math.max(...marks.map((e) => e.y1)) - r.y,
   } : null;
   return {
-    hide: [...[...drop].flatMap((e) => e.ops), ...extraOps],
+    hide: [...[...drop].flatMap((e) => e.ops), ...extraOps, ...glow],
+    glow,
     outlined: words.map((e) => ({ l: e.x0 - r.x, t: e.y0 - r.y, r: e.x1 - r.x, b: e.y1 - r.y, fill: colourOf(e) })),
     logoBox,
   };
@@ -566,7 +599,8 @@ async function importPdf(file, progress) {
     const parts = regions.length ? regions : [{ x: 0, y: 0, w: pageW, h: pageH }];
     // master template: each design keeps only its artwork; its logo and old outlined words go
     const plan = pagePlan(page);
-    const cleared = parts.map((r) => (plan ? logoAndWords(plan, r) : { hide: [], outlined: [] }));
+    const live = plan ? await liveWords(page) : [];
+    const cleared = parts.map((r) => (plan ? logoAndWords(plan, r, { live }) : { hide: [], outlined: [] }));
     const hideAll = cleared.flatMap((c) => c.hide);
     // designs whose boxes overlap: the neighbours' artwork in each one's box (not left out of the page
     // picture here: it's theirs — each is cut from it without the others, see cropOwn)
@@ -1040,13 +1074,14 @@ export async function piecesIn(item, box) {
 // 2: also where the logo was (logoBox) · 3: the colour of its old words drawn as shapes
 // 4: a row of a repeating background pattern isn't words (what 3 took out as words comes back)
 // 5: also a pattern of several shapes repeated (a flower of petals): what was taken out as words comes back
-export const CLEAN_VERSION = 5;
+// 6: the white glow behind the old words goes with them (it was left as a white blank)
+export const CLEAN_VERSION = 6;
 export async function autoClean(item) {
   if (!item || item.source !== "pdf" || !item.original || (item.cleaned || 0) >= CLEAN_VERSION) return null;
   const { page } = await designPage(item);
   const plan = pagePlan(page);
   const [x, y, w, h] = item.region || [0, 0, item.width, item.height];
-  const found = plan ? logoAndWords(plan, { x, y, w, h }) : { hide: [], outlined: [] };
+  const found = plan ? logoAndWords(plan, { x, y, w, h }, { live: await liveWords(page) }) : { hide: [], outlined: [] };
   // cleaned before: only where its logo was is new (what's left out stays as it is — a logo put
   // back by hand stays back)
   if (item.cleaned) {
@@ -1054,10 +1089,16 @@ export async function autoClean(item) {
       outlined: found.outlined.length ? found.outlined : item.outlined || [] };
     // cleaned before 5: the pattern taken out as if it were words comes back (what was taken out by
     // hand, or is still found, stays out)
-    if (item.cleaned < 5 && plan && (item.hide || []).length) {
+    let hide = item.hide || [];
+    if (item.cleaned < 5 && plan && hide.length) {
       const before = new Set(logoAndWords(plan, { x, y, w, h }, { tiles: false }).hide), now = new Set(found.hide);
-      const hide = item.hide.filter((o) => !before.has(o) || now.has(o));
-      if (hide.length !== item.hide.length) { out.hide = hide; out.background = await redrawBackground(item, hide); }
+      hide = hide.filter((o) => !before.has(o) || now.has(o));
+    }
+    // cleaned before 6: the white glows behind its old words go too
+    if (item.cleaned < 6 && found.glow && found.glow.length) hide = [...new Set([...hide, ...found.glow])];
+    if (hide.length !== (item.hide || []).length || hide.some((o, k) => o !== item.hide[k])) {
+      out.hide = hide;
+      out.background = await redrawBackground(item, hide);
     }
     return out;
   }
