@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-20c";
+const VERSION = "2026-10-28a";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -163,7 +163,7 @@ function renderElements() {
   const it0 = itemOf(S.key);
   if (it0 && it0.source === "pdf" && pickLogo.which && !pickLogo.which(rw)) {
     const sch = String((S.logoFrom && S.logoFrom.school) || "").trim() || String(rw.event_header || "").split("\n")[0].trim();
-    noLogo = `<span class="warn">⚠ Can't show the school logo${sch ? ` for “${esc(sch)}”` : ""}: no logo with that school's name in School logos (add it, named exactly like this).</span>`;
+    noLogo = `<span class="warn">⚠ Can't show the school logo${sch ? ` for “${esc(sch)}”` : ""}: no logo with that school's name in School logos (add it with this name, or one with the same words and more after them).</span>`;
   }
   $("meta").innerHTML = [row().qty ? `Qty <b>${esc(row().qty)}</b>` : "", noLogo].filter(Boolean).join(" · ");
     const texts = editor.objects().filter((o) => editor.isText(o));

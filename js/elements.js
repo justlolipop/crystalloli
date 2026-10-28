@@ -202,9 +202,20 @@ function unionFind(n) {
   return { find, join: (i, j) => { p[find(i)] = find(j); } };
 }
 
+// a row of the same shape again and again at the same distance (a background pattern: flowers,
+// diamonds), not letters — letters differ in width (I, M, O) and in how far apart they are
+function repeating(items) {
+  if (items.length < 3) return false;
+  const ws = items.map((it) => it.x1 - it.x0), hs = items.map((it) => it.y1 - it.y0);
+  const near = (v) => Math.max(...v) <= Math.min(...v) * 1.12 + 0.01;
+  const steps = items.slice(1).map((it, k) => it.x0 - items[k].x0);
+  return near(ws) && near(hs) && steps.every((d) => d > 0) && near(steps);
+}
+
 // Elements of the design inside region R ({ x, y, w, h } in pt, page top-left), bottom to top:
 // [{ kind, x0, y0, x1, y1, ops, blend }]
-export function findElements(all, R) {
+// tiles: false — the old way, a row of a repeating pattern taken for letters (see library.js autoClean)
+export function findElements(all, R, { tiles = true } = {}) {
   const A = R.w * R.h;
   const its = [];
   for (const it of all) {
@@ -236,7 +247,8 @@ export function findElements(all, R) {
     const med = r.items.map((it) => it.y1 - it.y0).sort((a, b) => a - b)[n >> 1];
     let fwd = 0;
     for (let k = 1; k < n; k++) if (r.items[k].x0 >= r.items[k - 1].x0 - 0.3 * med) fwd++;
-    const text = n >= 3 && r.items.every((it) => it.path) && w >= 1.8 * h && med >= 0.3 * h && fwd >= 0.7 * (n - 1) && area(r) < A * 0.25;
+    const text = n >= 3 && r.items.every((it) => it.path) && w >= 1.8 * h && med >= 0.3 * h && fwd >= 0.7 * (n - 1) && area(r) < A * 0.25 &&
+      !(tiles && repeating(r.items));
     r.cls = text ? "text" : "art";
     r.small = !text && area(r) < A * 0.004;
   }
