@@ -595,7 +595,12 @@ function findDesigns(data, W, H, S, pageW, pageH) {
   const ink = new Uint8Array(gw * gh);
   for (let y = 0; y < H; y++) {
     const row = ((y / g) | 0) * gw, base = y * W * 4;
-    for (let x = 0; x < W; x++) if (data[base + x * 4 + 3] > 24) ink[row + ((x / g) | 0)] = 1;
+    // plain white isn't ink here: a white box behind the whole sheet would make all its designs one
+    // (they're told apart by their outlines and artwork)
+    for (let x = 0; x < W; x++) {
+      const i = base + x * 4;
+      if (data[i + 3] > 24 && !(data[i] > 245 && data[i + 1] > 245 && data[i + 2] > 245 && data[i + 3] > 200)) ink[row + ((x / g) | 0)] = 1;
+    }
   }
   const found = designsIn(ink, g, gw, gh, S, pageW, pageH);
   if (found.length) return found;
@@ -755,6 +760,9 @@ function othersIn(plan, regions, i, S) {
   if (!plan || !r.tight) return ops;
   for (const it of plan.items) {
     if (it.x1 <= r.x || it.x0 >= r.x + r.w || it.y1 <= r.y || it.y0 >= r.y + r.h) continue;
+    // something behind them all (a white box over the whole sheet) isn't a neighbour's: it stays
+    const ow = Math.min(it.x1, r.x + r.w) - Math.max(it.x0, r.x), oh = Math.min(it.y1, r.y + r.h) - Math.max(it.y0, r.y);
+    if (ow * oh >= 0.6 * r.w * r.h) continue;
     const pts = [[0.5, 0.5], [0.25, 0.25], [0.75, 0.25], [0.25, 0.75], [0.75, 0.75]];
     let o = -1;
     for (const [fx, fy] of pts) {
