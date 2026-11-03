@@ -33,7 +33,7 @@ const sampleRows = () => [
 ];
 
 // shown at the bottom of the page: which Crystal Studio this browser has (after a change goes online)
-const VERSION = "2026-10-28j";
+const VERSION = "2026-11-03a";
 document.getElementById("ver").textContent = "Crystal Studio " + VERSION;
 
 const S = {
@@ -579,14 +579,14 @@ $("saveDefault").onclick = async () => {
   if (!it || it.source !== "pdf") return toast("Pick a crystal design (.ai) first.", "bad");
   const texts = editor.objects().filter((o) => editor.isText(o) && o.data && MASTER_FIELDS.includes(o.data.field));
   if (!texts.length) return toast("This crystal has no header, position or name text to save.", "bad");
-  if (!await ask(`Save this crystal's header, position and name (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline are kept for this design only — no other design changes.`)) return;
+  if (!await ask(`Save this crystal's header, position, name and line 2 (and where the school logo sits) as the default for “${it.name}”?\nTheir font, colour and outline are kept for this design only — no other design changes.`)) return;
   const layout = { ...(it.layout || {}) }, mine = { ...(it.look || {}) };
   for (const o of texts) {
     const f = o.data.field, sy = o.scaleY || 1, size = Math.round(o.fontSize * sy * 100) / 100;
     let top = o.top, lines = String(o.text || "").split("\n").length;
-    // the name was moved up for this row's extra lines (event_line_2 / 3): save it without them
-    if (f === "event_line_1") {
-      const extra = fieldValue(row(), f).split("\n").length - String(row().event_line_1 || "").split("\n").length;
+    // line 2 was moved up for this row's extra lines (an old Excel's event_line_3 / 4): save it without them
+    if (f === "event_line_2") {
+      const extra = fieldValue(row(), f).split("\n").length - String(row().event_line_2 || "").split("\n").length;
       if (extra > 0) { top += (extra * size * (o.lineHeight || 1) * 1.13) / 2; lines -= extra; }
     }
     // as wide as it is now at least (made bigger by dragging its corner, it must stay that big),
@@ -594,7 +594,7 @@ $("saveDefault").onclick = async () => {
     const wide = (o.getScaledWidth ? o.getScaledWidth() : o.width * (o.scaleX || 1)) * 1.03 + (o.strokeWidth || 0) + 1;
     layout[f] = { left: o.left, top, originX: o.originX, textAlign: o.textAlign, fontSize: size,
       maxW: Math.min(it.width, Math.max(o.data.maxW || 0, wide)), lines: Math.max(1, lines), angle: o.angle || 0, flipX: !!o.flipX,
-      w: Math.round(o.width * (o.scaleX || 1) * 100) / 100, text: f === "event_line_1" && lines < String(o.text || "").split("\n").length
+      w: Math.round(o.width * (o.scaleX || 1) * 100) / 100, text: f === "event_line_2" && lines < String(o.text || "").split("\n").length
         ? String(o.text || "").split("\n").slice(0, lines).join("\n") : String(o.text || "") };
     const family = String(o.fontFamily || "").split(",")[0].replace(/['"]/g, "").trim();
     mine[f] = { ps: o.data.ps || null, family: o.data.ps ? "" : family, bold: o.fontWeight === "bold", italic: o.fontStyle === "italic",

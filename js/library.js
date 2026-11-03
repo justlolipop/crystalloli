@@ -42,9 +42,9 @@ export function fillPlaceholders(text, row, columns) {
 
 // ------------------------------------------------------------------ the name paragraph
 
-// The name text (event_line_1) also carries the row's event_line_2 and event_line_3, as more lines
-// in the same font, so a design needs no extra text for them.
-const MORE_LINES = ["event_line_2", "event_line_3"];
+// Line 2 (event_line_2) is a text of its own under the name (its own place, font and size); an old
+// Excel's event_line_3 / 4 go on as more lines of it.
+const MORE_LINES = ["event_line_3", "event_line_4"];
 const filled = (v) => v != null && String(v).trim() !== "";
 
 // what a text linked to this column shows for this row
@@ -53,8 +53,8 @@ export function fieldValue(row, field) {
   // the position: each word with a capital first ("PENGAWAS PUSAT SUMBER" -> "Pengawas Pusat Sumber"),
   // on the crystal and in Illustrator; the Excel stays as it is
   if (field === "position") return filled(row[field]) ? titleWords(String(row[field])) : "";
-  if (field !== "event_line_1") return filled(row[field]) ? String(row[field]) : "";
-  return ["event_line_1", ...MORE_LINES].filter((f) => filled(row[f])).map((f) => String(row[f])).join("\n");
+  if (field !== "event_line_2") return filled(row[field]) ? String(row[field]) : "";
+  return ["event_line_2", ...MORE_LINES].filter((f) => filled(row[f])).map((f) => String(row[f])).join("\n");
 }
 
 // Each word with a capital first, the rest small — except short forms kept in capitals: a word with
@@ -84,7 +84,7 @@ export function setFieldValue(row, field, text) {
 // the master's, shared by all designs; where they sit and how big comes from the design: from
 // where its own .ai had its words (guessLayout), until a layout is saved for it in the editor.
 
-export const MASTER_FIELDS = ["event_header", "position", "event_line_1"];
+export const MASTER_FIELDS = ["event_header", "position", "event_line_1", "event_line_2"];
 const LOOK = ["ps", "family", "bold", "italic", "fill", "stroke", "strokeWidth", "paintFirst", "strokeLineJoin",
   "outerStroke", "outerStrokeWidth", "charSpacing", "lineHeight", "scaleX"];
 // The built-in master look: the fonts of the J&E crystal (header, award, name). "Save as default
@@ -96,7 +96,15 @@ const DEFAULT_MASTER = {
     strokeLineJoin: "round", outerStroke: "#ffffff", outerStrokeWidth: 4, lineHeight: 0.92, scaleX: 0.952 },
   event_line_1: { ps: "Gudea-Bold", family: "Gudea", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
     strokeLineJoin: "round", lineHeight: 0.92, scaleX: 0.89 },
+  event_line_2: { ps: "Gudea-Bold", family: "Gudea", fill: "#2c2e35", stroke: "#ffffff", strokeWidth: 4, paintFirst: "stroke",
+    strokeLineJoin: "round", lineHeight: 0.92, scaleX: 0.89 },
 };
+// Line 2 on a design saved before it had a place of its own: just under the name, a bit smaller,
+// lined up the same way. n: the name's place ({ top, fontSize | size, lines, … }); H: the design's height
+function underName(n, H) {
+  const size = n.fontSize || n.size, below = n.top + (n.lines || 1) * size * 0.92 * 1.13 + size * 0.3 + H * 0.01;
+  return { ...n, top: below, fontSize: n.fontSize ? size * 0.8 : undefined, size: n.size ? size * 0.8 : undefined, lines: 1, text: undefined, w: 0 };
+}
 let master = {};
 export function setMaster(m) { master = m && typeof m === "object" ? m : {}; }
 export const getMaster = () => master;
@@ -152,6 +160,7 @@ export function guessLayout(item) {
   const fallback = [[0.3, 0.05], [0.5, 0.07], [0.72, 0.05]]; // top, size (share of the height)
   const out = {};
   MASTER_FIELDS.forEach((f, i) => {
+    if (f === "event_line_2") { out[f] = underName(out.event_line_1, H); return; }
     const b = pick[i];
     const cx = b ? (b.l + b.r) / 2 : W / 2;
     out[f] = {
@@ -173,15 +182,21 @@ const FEWER_GROW = 1.3;
 // allows, and no taller than the room down to the next text (the last one: to near the bottom).
 async function masterTexts(item, row) {
   const guess = guessLayout(item), saved = item.layout || {};
-  const tops = MASTER_FIELDS.map((f) => (saved[f] ? saved[f].top : guess[f].top));
+  // line 2 on a design saved before it had a place of its own: under the saved name
+  const placed = { ...saved };
+  if (!placed.event_line_2 && placed.event_line_1) placed.event_line_2 = underName(placed.event_line_1, item.height);
+  // (the room each text has reaches down to the next one this row has)
+  const tops = MASTER_FIELDS.map((f) => (!fieldValue(row, f).trim() ? -1e9 : placed[f] ? placed[f].top : guess[f].top));
   const texts = [], stack = [];
   for (const [i, f] of MASTER_FIELDS.entries()) {
     let text = fieldValue(row, f);
     if (!text.trim()) continue;
-    const g = guess[f], s = saved[f];
+    const g = guess[f], s = placed[f];
     // its look: this design's own (Save as default template on this design), else the built-in one —
     // never another design's
-    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...((item.look && item.look[f]) || {}) };
+    // (line 2 not saved on this design yet: the name's look)
+    const own = item.look && (item.look[f] || (f === "event_line_2" && item.look.event_line_1));
+    const look = { family: "Arial", fill: "#000000", ...DEFAULT_MASTER[f], ...(own || {}) };
     // never words that can't be seen on the crystal: a dark colour, a light outline behind them,
     // a width and line height that draw something
     if (!darkEnough(look.fill)) look.fill = DEFAULT_MASTER[f].fill;
@@ -240,8 +255,8 @@ async function masterTexts(item, row) {
       if (size2 > size * 1.1) { text = best.t; size = size2; }
     }
     let top = s ? s.top : g.top;
-    // the name's extra lines (event_line_2 / 3) grow it up and down alike, so it stays in its place
-    const extra = f === "event_line_1" ? text.split("\n").length - String(row.event_line_1 || "").split("\n").length : 0;
+    // line 2's extra lines (an old Excel's event_line_3 / 4) grow it up and down alike, so it stays in its place
+    const extra = f === "event_line_2" ? text.split("\n").length - String(row.event_line_2 || "").split("\n").length : 0;
     if (extra > 0) top -= (extra * size * (look.lineHeight || 1) * 1.13) / 2;
     const real = css.startsWith("ps_");
     // for laying the texts out together (restack): where and how tall it was on the template, how tall now
